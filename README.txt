@@ -219,3 +219,8 @@ Abaixo descrevo cada tela/arquivo público importante, o que faz, campos princip
 * Criar testes automatizados (unitários e de integração) para cargas e cálculos fiscais.
 * Containerizar aplicação (Docker) e criar playbook de deploy (CI/CD).
 
+
+
+Todo dia que se mecheu no codigo, quando ce tiver pra sair se da git add .
+git commit -m "Descripción del cambio"
+git push origin nombre-del-dev
