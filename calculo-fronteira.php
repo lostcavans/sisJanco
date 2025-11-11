@@ -262,7 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt_completo = $conexao->prepare($query_completa);
             if ($stmt_completo) {
                 $stmt_completo->bind_param(
-                    "sdddddddssddddddsddddddddsi",
+                    "sdddddddssddddddsdddddddddsi", // 26 caracteres para 26 parâmetros
                     $descricao,
                     $valor_produto,
                     $valor_frete,
