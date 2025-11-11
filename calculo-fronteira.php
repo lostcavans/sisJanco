@@ -230,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
             if ($stmt_update = $conexao->prepare($query_update)) {
                 $stmt_update->bind_param(
-                    "sddddddssdddddddsdi", // 18 parâmetros
+                    "ssddddddssdddddddsd", // 19 parâmetros
                     $regime_fornecedor, 
                     $tipo_credito_icms, 
                     $icms_st,
