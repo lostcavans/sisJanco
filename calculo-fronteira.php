@@ -276,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
 
             $stmt_update->bind_param(
-                "ssddddddsddddddddssi",
+                "ssddddddsddddddddsi",
                 $regime_fornecedor, 
                 $tipo_credito_icms, 
                 $icms_st,
