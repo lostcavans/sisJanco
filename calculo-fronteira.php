@@ -196,27 +196,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             throw new Exception("Erro ao preparar query do grupo: " . $conexao->error);
         }
         
-        // Inserir cálculo 
-        $query = "
-            INSERT INTO calculos_fronteira (
-                usuario_id, grupo_id, descricao, valor_produto, valor_frete, valor_ipi, 
-                valor_seguro, valor_icms, aliquota_interna, aliquota_interestadual,
-                competencia, empresa_regular
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ";
+        try {
+            // Inserir cálculo
+            $query_insert = "
+                INSERT INTO calculos_fronteira (
+                    usuario_id, grupo_id, descricao, valor_produto, valor_frete, valor_ipi, 
+                    valor_seguro, valor_icms, aliquota_interna, aliquota_interestadual,
+                    competencia, empresa_regular
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ";
 
-        if ($stmt = $conexao->prepare($query)) {
-            $stmt->bind_param("iisdddddddss", $usuario_id, $grupo_id, $descricao, $valor_produto, $valor_frete, $valor_ipi, $valor_seguro, $valor_icms, $aliquota_interna, $aliquota_interestadual, $competencia_nota, $empresa_regular);
-            
-            if (!$stmt->execute()) {
-                error_log("Erro ao executar query simples: " . $stmt->error);
-                throw new Exception($stmt->error);
+            $stmt = $conexao->prepare($query_insert);
+            if (!$stmt) {
+                throw new Exception("Erro ao preparar INSERT: " . $conexao->error);
             }
-            
+
+            // Verificação e formatação de valores numéricos (evita problemas com vírgulas)
+            $campos_numericos = [
+                'valor_produto', 'valor_frete', 'valor_ipi', 'valor_seguro', 'valor_icms',
+                'aliquota_interna', 'aliquota_interestadual'
+            ];
+            foreach ($campos_numericos as $campo) {
+                if (isset($$campo)) {
+                    $$campo = floatval(str_replace(',', '.', $$campo));
+                }
+            }
+
+            $stmt->bind_param(
+                "iisdddddddss",
+                $usuario_id,
+                $grupo_id,
+                $descricao,
+                $valor_produto,
+                $valor_frete,
+                $valor_ipi,
+                $valor_seguro,
+                $valor_icms,
+                $aliquota_interna,
+                $aliquota_interestadual,
+                $competencia_nota,
+                $empresa_regular
+            );
+
+            if (!$stmt->execute()) {
+                throw new Exception("Erro ao executar INSERT: " . $stmt->error);
+            }
+
             $calculo_id = $conexao->insert_id;
             $stmt->close();
-            
-            // Depois atualize os outros campos
+
+            // Atualização dos outros campos
             $query_update = "
                 UPDATE calculos_fronteira 
                 SET regime_fornecedor = ?, tipo_credito_icms = ?, icms_st = ?, 
@@ -228,41 +257,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 WHERE id = ?
             ";
 
-            if ($stmt_update = $conexao->prepare($query_update)) {
-                
-                $stmt_update->bind_param(
-                    "ssddddddsddddddddsi",
-                    $regime_fornecedor, 
-                    $tipo_credito_icms, 
-                    $icms_st,
-                    $mva_original, 
-                    $mva_cnae, 
-                    $aliquota_reducao,
-                    $diferencial_aliquota, 
-                    $valor_gnre, 
-                    $tipo_calculo,
-                    $icms_tributado_simples_regular, 
-                    $icms_tributado_simples_irregular,
-                    $icms_tributado_real, 
-                    $icms_uso_consumo, 
-                    $icms_reducao,
-                    $mva_ajustada, 
-                    $icms_reducao_sn, 
-                    $icms_reducao_st_sn, 
-                    $empresa_regular, 
-                    $calculo_id
-                );
-
-
-
-                
-                if (!$stmt_update->execute()) {
-                    error_log("Erro ao atualizar cálculo: " . $stmt_update->error);
-                    throw new Exception($stmt_update->error);
-                }
-                
-                $stmt_update->close();
+            $stmt_update = $conexao->prepare($query_update);
+            if (!$stmt_update) {
+                throw new Exception("Erro ao preparar UPDATE: " . $conexao->error);
             }
+
+            // Normalizar campos numéricos novamente
+            $campos_numericos_update = [
+                'icms_st', 'mva_original', 'mva_cnae', 'aliquota_reducao', 'diferencial_aliquota',
+                'valor_gnre', 'icms_tributado_simples_regular', 'icms_tributado_simples_irregular',
+                'icms_tributado_real', 'icms_uso_consumo', 'icms_reducao', 'mva_ajustada',
+                'icms_reducao_sn', 'icms_reducao_st_sn'
+            ];
+            foreach ($campos_numericos_update as $campo) {
+                if (isset($$campo)) {
+                    $$campo = floatval(str_replace(',', '.', $$campo));
+                }
+            }
+
+            $stmt_update->bind_param(
+                "ssddddddsddddddddssi",
+                $regime_fornecedor, 
+                $tipo_credito_icms, 
+                $icms_st,
+                $mva_original, 
+                $mva_cnae, 
+                $aliquota_reducao,
+                $diferencial_aliquota, 
+                $valor_gnre, 
+                $tipo_calculo,
+                $icms_tributado_simples_regular, 
+                $icms_tributado_simples_irregular,
+                $icms_tributado_real, 
+                $icms_uso_consumo, 
+                $icms_reducao,
+                $mva_ajustada, 
+                $icms_reducao_sn, 
+                $icms_reducao_st_sn, 
+                $empresa_regular, 
+                $calculo_id
+            );
+
+            if (!$stmt_update->execute()) {
+                throw new Exception("Erro ao executar UPDATE: " . $stmt_update->error);
+            }
+
+            $stmt_update->close();
+
+            // ✅ Tudo certo
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Cálculo salvo e atualizado com sucesso.',
+                'calculo_id' => $calculo_id
+            ]);
+
+        } catch (Exception $e) {
+            error_log("Erro no processamento de cálculo: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        } finally {
+            if (isset($stmt) && $stmt) $stmt->close();
+            if (isset($stmt_update) && $stmt_update) $stmt_update->close();
         }
         // Salvar relação entre grupo de cálculo e produtos
         if (!empty($produtos_ids)) {
