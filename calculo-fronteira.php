@@ -229,12 +229,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ";
 
             if ($stmt_update = $conexao->prepare($query_update)) {
-                echo "Placeholders na query: " . substr_count($query_update, '?') . "<br>";
-                echo "Variáveis no bind_param: 19<br>";
-                echo "String de tipos: " . strlen("ssddddddssdddddddsd") . " caracteres<br>";
                 
                 $stmt_update->bind_param(
-                    "ssddddddssddddddssi",
+                "ssddddddsddddddddsi",
+
                     $regime_fornecedor, 
                     $tipo_credito_icms, 
                     $icms_st,
