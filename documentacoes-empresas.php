@@ -40,6 +40,13 @@ $stmt->execute();
 $empresas = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
+// DEBUG - REMOVA DEPOIS
+echo "<!-- DEBUG: Total de empresas encontradas: " . count($empresas) . " -->";
+echo "<!-- DEBUG: Query executada: " . $sql . " -->";
+foreach($empresas as $emp) {
+    echo "<!-- DEBUG Empresa: " . $emp['razao_social'] . " - " . $emp['cnpj'] . " -->";
+}
+
 // Calcular percentuais
 foreach ($empresas as &$empresa) {
     if ($empresa['total_documentos'] > 0) {
