@@ -245,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $calculo_id = $conexao->insert_id;
             $stmt->close();
 
-            // Atualização dos outros campos
+            // Versão simplificada e testada
             $query_update = "
                 UPDATE calculos_fronteira 
                 SET regime_fornecedor = ?, tipo_credito_icms = ?, icms_st = ?, 
@@ -262,21 +262,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 throw new Exception("Erro ao preparar UPDATE: " . $conexao->error);
             }
 
-            // Normalizar campos numéricos novamente
-            $campos_numericos_update = [
-                'icms_st', 'mva_original', 'mva_cnae', 'aliquota_reducao', 'diferencial_aliquota',
-                'valor_gnre', 'icms_tributado_simples_regular', 'icms_tributado_simples_irregular',
-                'icms_tributado_real', 'icms_uso_consumo', 'icms_reducao', 'mva_ajustada',
-                'icms_reducao_sn', 'icms_reducao_st_sn'
-            ];
-            foreach ($campos_numericos_update as $campo) {
-                if (isset($$campo)) {
-                    $$campo = floatval(str_replace(',', '.', $$campo));
-                }
-            }
-
+            // String de tipos: 2s + 7d + 2s + 7d + 1s + 1i = 19 caracteres
             $stmt_update->bind_param(
-                "ssddddddsdddddddds",
+                "ssddddddssdddddddsi",
                 $regime_fornecedor, 
                 $tipo_credito_icms, 
                 $icms_st,
@@ -294,7 +282,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $mva_ajustada, 
                 $icms_reducao_sn, 
                 $icms_reducao_st_sn, 
-                $empresa_regular
+                $empresa_regular, 
+                $calculo_id
             );
 
             if (!$stmt_update->execute()) {
