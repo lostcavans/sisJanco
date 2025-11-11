@@ -276,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
 
             $stmt_update->bind_param(
-                "ssddddddsddddddddsi",
+                "ssddddddsdddddddds",
                 $regime_fornecedor, 
                 $tipo_credito_icms, 
                 $icms_st,
@@ -294,8 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $mva_ajustada, 
                 $icms_reducao_sn, 
                 $icms_reducao_st_sn, 
-                $empresa_regular, 
-                $calculo_id
+                $empresa_regular
             );
 
             if (!$stmt_update->execute()) {
