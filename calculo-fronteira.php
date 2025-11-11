@@ -245,11 +245,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $calculo_id = $conexao->insert_id;
             $stmt->close();
 
-            // Versão simplificada e testada
-            $query_update = "
+            // SOLUÇÃO ALTERNATIVA - Atualizar tudo em uma única query
+            $query_completa = "
                 UPDATE calculos_fronteira 
-                SET regime_fornecedor = ?, tipo_credito_icms = ?, icms_st = ?, 
-                    mva_original = ?, mva_cnae = ?, aliquota_reducao = ?, 
+                SET descricao = ?, valor_produto = ?, valor_frete = ?, valor_ipi = ?, 
+                    valor_seguro = ?, valor_icms = ?, aliquota_interna = ?, 
+                    aliquota_interestadual = ?, regime_fornecedor = ?, tipo_credito_icms = ?, 
+                    icms_st = ?, mva_original = ?, mva_cnae = ?, aliquota_reducao = ?,
                     diferencial_aliquota = ?, valor_gnre = ?, tipo_calculo = ?,
                     icms_tributado_simples_regular = ?, icms_tributado_simples_irregular = ?,
                     icms_tributado_real = ?, icms_uso_consumo = ?, icms_reducao = ?, 
@@ -257,40 +259,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 WHERE id = ?
             ";
 
-            $stmt_update = $conexao->prepare($query_update);
-            if (!$stmt_update) {
-                throw new Exception("Erro ao preparar UPDATE: " . $conexao->error);
+            $stmt_completo = $conexao->prepare($query_completa);
+            if ($stmt_completo) {
+                $stmt_completo->bind_param(
+                    "sdddddddssddddddsddddddddsi",
+                    $descricao,
+                    $valor_produto,
+                    $valor_frete,
+                    $valor_ipi,
+                    $valor_seguro,
+                    $valor_icms,
+                    $aliquota_interna,
+                    $aliquota_interestadual,
+                    $regime_fornecedor,
+                    $tipo_credito_icms,
+                    $icms_st,
+                    $mva_original,
+                    $mva_cnae,
+                    $aliquota_reducao,
+                    $diferencial_aliquota,
+                    $valor_gnre,
+                    $tipo_calculo,
+                    $icms_tributado_simples_regular,
+                    $icms_tributado_simples_irregular,
+                    $icms_tributado_real,
+                    $icms_uso_consumo,
+                    $icms_reducao,
+                    $mva_ajustada,
+                    $icms_reducao_sn,
+                    $icms_reducao_st_sn,
+                    $empresa_regular,
+                    $calculo_id
+                );
+                
+                if ($stmt_completo->execute()) {
+                    $stmt_completo->close();
+                } else {
+                    throw new Exception("Erro ao executar query completa: " . $stmt_completo->error);
+                }
             }
-
-            // String de tipos: 2s + 7d + 2s + 7d + 1s + 1i = 19 caracteres
-            $stmt_update->bind_param(
-                "ssddddddssdddddddsi",
-                $regime_fornecedor, 
-                $tipo_credito_icms, 
-                $icms_st,
-                $mva_original, 
-                $mva_cnae, 
-                $aliquota_reducao,
-                $diferencial_aliquota, 
-                $valor_gnre, 
-                $tipo_calculo,
-                $icms_tributado_simples_regular, 
-                $icms_tributado_simples_irregular,
-                $icms_tributado_real, 
-                $icms_uso_consumo, 
-                $icms_reducao,
-                $mva_ajustada, 
-                $icms_reducao_sn, 
-                $icms_reducao_st_sn, 
-                $empresa_regular, 
-                $calculo_id
-            );
-
-            if (!$stmt_update->execute()) {
-                throw new Exception("Erro ao executar UPDATE: " . $stmt_update->error);
-            }
-
-            $stmt_update->close();
 
             // ✅ Tudo certo
             echo json_encode([
