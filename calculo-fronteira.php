@@ -234,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 echo "String de tipos: " . strlen("ssddddddssdddddddsd") . " caracteres<br>";
                 
                 $stmt_update->bind_param(
-                    "ssddddddssdddddddsd", // 19 parâmetros (removido o 'i' final)
+                    "ssddddddssddddddsdsi",
                     $regime_fornecedor, 
                     $tipo_credito_icms, 
                     $icms_st,
@@ -255,6 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $empresa_regular, 
                     $calculo_id
                 );
+
                 
                 if (!$stmt_update->execute()) {
                     error_log("Erro ao atualizar cálculo: " . $stmt_update->error);
