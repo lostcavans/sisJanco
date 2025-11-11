@@ -441,8 +441,15 @@ unset($empresa);
                                 <div class="empresa-cnpj">CNPJ: <?php echo htmlspecialchars($empresa['cnpj']); ?></div>
                             </div>
                             <div style="text-align: right;">
-                                <span class="empresa-badge"><?php echo htmlspecialchars($empresa['regime_tributario']); ?></span>
-                                <span class="empresa-badge"><?php echo htmlspecialchars($empresa['atividade']); ?></span>
+                                <?php if (isset($empresa['regime_tributario']) && !empty($empresa['regime_tributario'])): ?>
+                                    <span class="empresa-badge"><?php echo htmlspecialchars($empresa['regime_tributario']); ?></span>
+                                <?php endif; ?>
+                                
+                                <?php if (isset($empresa['atividade']) && !empty($empresa['atividade'])): ?>
+                                    <span class="empresa-badge"><?php echo htmlspecialchars($empresa['atividade']); ?></span>
+                                <?php elseif (isset($empresa['dominio']) && !empty($empresa['dominio'])): ?>
+                                    <span class="empresa-badge"><?php echo htmlspecialchars($empresa['dominio']); ?></span>
+                                <?php endif; ?>
                             </div>
                         </div>
 
