@@ -232,8 +232,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 echo "Placeholders na query: " . substr_count($query_update, '?') . "<br>";
                 echo "Variáveis no bind_param: 19<br>";
                 echo "String de tipos: " . strlen("ssddddddssdddddddsd") . " caracteres<br>";
+                
                 $stmt_update->bind_param(
-                    "ssddddddssdddddddsdi", // 19 parâmetros
+                    "ssddddddssdddddddsd", // 19 parâmetros (removido o 'i' final)
                     $regime_fornecedor, 
                     $tipo_credito_icms, 
                     $icms_st,
