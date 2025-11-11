@@ -12,13 +12,12 @@ $usuario_id = $_SESSION['usuario_id_gestao'];
 $nivel_usuario = $_SESSION['usuario_nivel_gestao'];
 
 // Buscar empresas da tabela EMPRESAS (sistema contábil)
-// Buscar empresas da tabela GESTAO_EMPRESAS (sistema de gestão)
 $sql = "SELECT e.*,
                (SELECT COUNT(*) FROM gestao_documentacoes_empresa de WHERE de.empresa_id = e.id) as total_documentos,
                (SELECT COUNT(*) FROM gestao_documentacoes_empresa de WHERE de.empresa_id = e.id AND de.status = 'recebido') as documentos_recebidos,
                (SELECT COUNT(*) FROM gestao_documentacoes_empresa de WHERE de.empresa_id = e.id AND de.status = 'pendente') as documentos_pendentes,
                (SELECT COUNT(*) FROM gestao_documentacoes_empresa de WHERE de.empresa_id = e.id AND de.status = 'atrasado') as documentos_atrasados
-        FROM gestao_empresas e
+        FROM empresas e
         WHERE e.ativo = 1";
 
 // Filtro de pesquisa
