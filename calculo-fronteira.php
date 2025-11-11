@@ -231,8 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if ($stmt_update = $conexao->prepare($query_update)) {
                 
                 $stmt_update->bind_param(
-                "ssddddddsddddddddsi",
-
+                    "ssddddddsdddddddisi",
                     $regime_fornecedor, 
                     $tipo_credito_icms, 
                     $icms_st,
@@ -253,6 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $empresa_regular, 
                     $calculo_id
                 );
+
 
 
                 
