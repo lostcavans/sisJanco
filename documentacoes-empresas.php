@@ -18,7 +18,7 @@ $sql = "SELECT e.*,
                (SELECT COUNT(*) FROM gestao_documentacoes_empresa de WHERE de.empresa_id = e.id AND de.status = 'pendente') as documentos_pendentes,
                (SELECT COUNT(*) FROM gestao_documentacoes_empresa de WHERE de.empresa_id = e.id AND de.status = 'atrasado') as documentos_atrasados
         FROM empresas e
-        WHERE e.ativo = 1";
+        WHERE 1=1";
 
 // Filtro de pesquisa
 $filtro_nome = '';
