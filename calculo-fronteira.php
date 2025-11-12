@@ -1,5 +1,12 @@
+
 <?php
 session_start();
+
+// Clear any output buffering
+while (ob_get_level()) ob_end_clean();
+
+// Debug - verificar se o arquivo é o correto
+error_log("calculo-fronteira.php carregado - versão sem prepared statements");
 
 // Função para verificar autenticação
 function verificarAutenticacao() {
