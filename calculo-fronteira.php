@@ -1266,7 +1266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ];
             
             // String de tipos: 26 parâmetros + 2 para WHERE = 28 caracteres
-            $types = "sdddddddssddddddsdddddddddsii";
+            $types = "sdddddddssddddddsddddddddsii";
             
             if (strlen($types) !== count($params)) {
                 throw new Exception("Erro UPDATE: Número de tipos (" . strlen($types) . ") não corresponde ao número de parâmetros (" . count($params) . ")");
