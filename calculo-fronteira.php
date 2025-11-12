@@ -1041,6 +1041,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $regime_fornecedor = $_POST['regime_fornecedor'] ?? '3';
     $tipo_calculo = $_POST['tipo_calculo'] ?? 'icms_st';
     $tipo_credito_icms = isset($_POST['tipo_credito_icms']) ? 'manual' : 'nota';
+    
+    // ADICIONE ESTA LINHA PARA DEFINIR A VARIÁVEL EMPRESA_REGULAR
+    $empresa_regular = $_POST['empresa_regular'] ?? 'S';
+    
     $query_competencia = "SELECT competencia FROM calculos_fronteira WHERE id = " . intval($calculo_id);
     $result_comp = $conexao->query($query_competencia);
     if ($result_comp && $calculo_comp = $result_comp->fetch_assoc()) {
