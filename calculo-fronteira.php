@@ -254,30 +254,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ";
 
         if ($stmt_update = $conexao->prepare($query_update)) {
-            // CORREÇÃO: A string de tipos deve corresponder exatamente ao número de parâmetros
-            // Contando os parâmetros: 18 placeholders (?) na query
-            $stmt_update->bind_param(
-                "ssddddddsdddddddddsi", // 19 caracteres: 18 parâmetros + 1 para o WHERE
-                $regime_fornecedor,
-                $tipo_credito_icms,
-                $icms_st,
-                $mva_original,
-                $mva_cnae,
-                $aliquota_reducao,
-                $diferencial_aliquota,
-                $valor_gnre,
-                $tipo_calculo,
-                $icms_tributado_simples_regular,
-                $icms_tributado_simples_irregular,
-                $icms_tributado_real,
-                $icms_uso_consumo,
-                $icms_reducao,
-                $mva_ajustada,
-                $icms_reducao_sn,
-                $icms_reducao_st_sn,
-                $empresa_regular,
-                $calculo_id
-            );
+            // DEBUG: Verificar parâmetros
+            $params = [
+                $regime_fornecedor,          // s
+                $tipo_credito_icms,          // s  
+                $icms_st,                    // d
+                $mva_original,               // d
+                $mva_cnae,                   // d
+                $aliquota_reducao,           // d
+                $diferencial_aliquota,       // d
+                $valor_gnre,                 // d
+                $tipo_calculo,               // s
+                $icms_tributado_simples_regular,  // d
+                $icms_tributado_simples_irregular, // d
+                $icms_tributado_real,        // d
+                $icms_uso_consumo,           // d
+                $icms_reducao,               // d
+                $mva_ajustada,               // d
+                $icms_reducao_sn,            // d
+                $icms_reducao_st_sn,         // d
+                $empresa_regular,            // s
+                $calculo_id                  // i
+            ];
+            
+            // String de tipos: 18 parâmetros = 2s + 15d + 1s + 1i = 19 caracteres
+            $types = "ssddddddsdddddddddsi";
+            
+            if (strlen($types) !== count($params)) {
+                throw new Exception("Erro: Número de tipos (" . strlen($types) . ") não corresponde ao número de parâmetros (" . count($params) . ")");
+            }
+            
+            $stmt_update->bind_param($types, ...$params);
 
             if (!$stmt_update->execute()) {
                 throw new Exception("Erro ao atualizar cálculo: " . $stmt_update->error);
@@ -1226,38 +1233,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ";
 
         if ($stmt = $conexao->prepare($query)) {
-            // CORREÇÃO: 26 parâmetros + 2 para WHERE = 28 caracteres
-            $stmt->bind_param(
-                'sdddddddssddddddsdddddddddsii', // 28 caracteres
-                $descricao,
-                $valor_produto,
-                $valor_frete,
-                $valor_ipi,
-                $valor_seguro,
-                $valor_icms,
-                $aliquota_interna,
-                $aliquota_interestadual,
-                $regime_fornecedor,
-                $tipo_credito_icms,
-                $icms_st,
-                $mva_original,
-                $mva_cnae,
-                $aliquota_reducao,
-                $diferencial_aliquota,
-                $valor_gnre,
-                $tipo_calculo,
-                $icms_tributado_simples_regular,
-                $icms_tributado_simples_irregular,
-                $icms_tributado_real,
-                $icms_uso_consumo,
-                $icms_reducao,
-                $mva_ajustada,
-                $icms_reducao_sn,
-                $icms_reducao_st_sn,
-                $empresa_regular,
-                $calculo_id,
-                $usuario_id
-            );
+            // DEBUG: Verificar parâmetros
+            $params = [
+                $descricao,                          // s
+                $valor_produto,                      // d
+                $valor_frete,                        // d
+                $valor_ipi,                          // d
+                $valor_seguro,                       // d
+                $valor_icms,                         // d
+                $aliquota_interna,                   // d
+                $aliquota_interestadual,             // d
+                $regime_fornecedor,                  // s
+                $tipo_credito_icms,                  // s
+                $icms_st,                            // d
+                $mva_original,                       // d
+                $mva_cnae,                           // d
+                $aliquota_reducao,                   // d
+                $diferencial_aliquota,               // d
+                $valor_gnre,                         // d
+                $tipo_calculo,                       // s
+                $icms_tributado_simples_regular,     // d
+                $icms_tributado_simples_irregular,   // d
+                $icms_tributado_real,                // d
+                $icms_uso_consumo,                   // d
+                $icms_reducao,                       // d
+                $mva_ajustada,                       // d
+                $icms_reducao_sn,                    // d
+                $icms_reducao_st_sn,                 // d
+                $empresa_regular,                    // s
+                $calculo_id,                         // i
+                $usuario_id                          // i
+            ];
+            
+            // String de tipos: 26 parâmetros + 2 para WHERE = 28 caracteres
+            $types = "sdddddddssddddddsdddddddddsii";
+            
+            if (strlen($types) !== count($params)) {
+                throw new Exception("Erro UPDATE: Número de tipos (" . strlen($types) . ") não corresponde ao número de parâmetros (" . count($params) . ")");
+            }
+            
+            $stmt->bind_param($types, ...$params);
 
             if (!$stmt->execute()) {
                 error_log("Erro ao atualizar cálculo: " . $stmt->error);
