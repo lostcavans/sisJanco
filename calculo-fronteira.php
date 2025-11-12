@@ -278,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ];
             
             // String de tipos: 18 parâmetros = 2s + 15d + 1s + 1i = 19 caracteres
-            $types = "ssddddddsdddddddddsi";
+            $types = "ssddddddsddddddddsi";
             
             if (strlen($types) !== count($params)) {
                 throw new Exception("Erro: Número de tipos (" . strlen($types) . ") não corresponde ao número de parâmetros (" . count($params) . ")");
