@@ -166,62 +166,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     // Inserir no banco de dados
     try {
-        $conexao->begin_transaction();
-        
-        // Valores padrão para evitar NULL
+        // Iniciar transação
+        $conexao->begin_transaction(MYSQLI_TRANS_START_READ_WRITE);
+
+        // Sanitizar e definir valores padrão
         $descricao = trim($_POST['descricao'] ?? 'Cálculo sem descrição');
         $informacoes_adicionais = trim($_POST['informacoes_adicionais'] ?? '');
         $nota_id = $_POST['nota_id'] ?? null;
         $competencia_nota = $competencia_nota ?? date('Y-m');
-        
-        // Se nota_id for vazio, definir como NULL
+
         if (empty($nota_id)) {
             $nota_id = null;
         }
-        
-        // Criar grupo de cálculo
-        $query = "INSERT INTO grupos_calculo (usuario_id, descricao, nota_fiscal_id, informacoes_adicionais, competencia) VALUES (?, ?, ?, ?, ?)";
-        if ($stmt = $conexao->prepare($query)) {
+
+        // ==========================================================
+        // 1️⃣ INSERIR GRUPO DE CÁLCULO
+        // ==========================================================
+        $query_grupo = "
+            INSERT INTO grupos_calculo (
+                usuario_id, descricao, nota_fiscal_id, informacoes_adicionais, competencia
+            ) VALUES (?, ?, ?, ?, ?)
+        ";
+
+        if ($stmt = $conexao->prepare($query_grupo)) {
             $stmt->bind_param("isiss", $usuario_id, $descricao, $nota_id, $informacoes_adicionais, $competencia_nota);
-            
+
             if (!$stmt->execute()) {
-                error_log("Erro ao inserir grupo de cálculo: " . $stmt->error);
                 throw new Exception("Erro ao criar grupo de cálculo: " . $stmt->error);
             }
-            
+
             $grupo_id = $conexao->insert_id;
             $stmt->close();
         } else {
-            error_log("Erro ao preparar query do grupo: " . $conexao->error);
             throw new Exception("Erro ao preparar query do grupo: " . $conexao->error);
         }
-        
-        try {
-            // Inserir cálculo
-            $query_insert = "
-                INSERT INTO calculos_fronteira (
-                    usuario_id, grupo_id, descricao, valor_produto, valor_frete, valor_ipi, 
-                    valor_seguro, valor_icms, aliquota_interna, aliquota_interestadual,
-                    competencia, empresa_regular
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ";
 
-            $stmt = $conexao->prepare($query_insert);
-            if (!$stmt) {
-                throw new Exception("Erro ao preparar INSERT: " . $conexao->error);
-            }
+        // ==========================================================
+        // 2️⃣ INSERIR CÁLCULO BASE
+        // ==========================================================
+        $query_calculo = "
+            INSERT INTO calculos_fronteira (
+                usuario_id, grupo_id, descricao, valor_produto, valor_frete, valor_ipi, 
+                valor_seguro, valor_icms, aliquota_interna, aliquota_interestadual,
+                competencia, empresa_regular
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ";
 
-            // Verificação e formatação de valores numéricos (evita problemas com vírgulas)
-            $campos_numericos = [
-                'valor_produto', 'valor_frete', 'valor_ipi', 'valor_seguro', 'valor_icms',
-                'aliquota_interna', 'aliquota_interestadual'
-            ];
-            foreach ($campos_numericos as $campo) {
-                if (isset($$campo)) {
-                    $$campo = floatval(str_replace(',', '.', $$campo));
-                }
-            }
-
+        if ($stmt = $conexao->prepare($query_calculo)) {
             $stmt->bind_param(
                 "iisdddddddss",
                 $usuario_id,
@@ -239,97 +230,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             );
 
             if (!$stmt->execute()) {
-                throw new Exception("Erro ao executar INSERT: " . $stmt->error);
+                throw new Exception("Erro ao inserir cálculo base: " . $stmt->error);
             }
 
             $calculo_id = $conexao->insert_id;
             $stmt->close();
+        } else {
+            throw new Exception("Erro ao preparar query de cálculo: " . $conexao->error);
+        }
 
-            // Versão simplificada e testada
-            $query_update = "
-                UPDATE calculos_fronteira 
-                SET regime_fornecedor = ?, tipo_credito_icms = ?, icms_st = ?, 
-                    mva_original = ?, mva_cnae = ?, aliquota_reducao = ?, 
-                    diferencial_aliquota = ?, valor_gnre = ?, tipo_calculo = ?,
-                    icms_tributado_simples_regular = ?, icms_tributado_simples_irregular = ?,
-                    icms_tributado_real = ?, icms_uso_consumo = ?, icms_reducao = ?, 
-                    mva_ajustada = ?, icms_reducao_sn = ?, icms_reducao_st_sn = ?, empresa_regular = ?
-                WHERE id = ?
-            ";
+        // ==========================================================
+        // 3️⃣ ATUALIZAR DEMAIS CAMPOS DO CÁLCULO
+        // ==========================================================
+        $query_update = "
+            UPDATE calculos_fronteira SET 
+                regime_fornecedor = ?, tipo_credito_icms = ?, icms_st = ?, 
+                mva_original = ?, mva_cnae = ?, aliquota_reducao = ?, 
+                diferencial_aliquota = ?, valor_gnre = ?, tipo_calculo = ?,
+                icms_tributado_simples_regular = ?, icms_tributado_simples_irregular = ?,
+                icms_tributado_real = ?, icms_uso_consumo = ?, icms_reducao = ?, 
+                mva_ajustada = ?, icms_reducao_sn = ?, icms_reducao_st_sn = ?, empresa_regular = ?
+            WHERE id = ?
+        ";
 
-            $stmt_update = $conexao->prepare($query_update);
-            if (!$stmt_update) {
-                throw new Exception("Erro ao preparar UPDATE: " . $conexao->error);
-            }
-
-            // String de tipos: 2s + 7d + 2s + 7d + 1s + 1i = 19 caracteres
+        if ($stmt_update = $conexao->prepare($query_update)) {
             $stmt_update->bind_param(
-                "ssddddddssdddddddsi",
-                $regime_fornecedor, 
-                $tipo_credito_icms, 
+                "ssddddddsddddddddsi",
+                $regime_fornecedor,
+                $tipo_credito_icms,
                 $icms_st,
-                $mva_original, 
-                $mva_cnae, 
+                $mva_original,
+                $mva_cnae,
                 $aliquota_reducao,
-                $diferencial_aliquota, 
-                $valor_gnre, 
+                $diferencial_aliquota,
+                $valor_gnre,
                 $tipo_calculo,
-                $icms_tributado_simples_regular, 
+                $icms_tributado_simples_regular,
                 $icms_tributado_simples_irregular,
-                $icms_tributado_real, 
-                $icms_uso_consumo, 
+                $icms_tributado_real,
+                $icms_uso_consumo,
                 $icms_reducao,
-                $mva_ajustada, 
-                $icms_reducao_sn, 
-                $icms_reducao_st_sn, 
-                $empresa_regular, 
+                $mva_ajustada,
+                $icms_reducao_sn,
+                $icms_reducao_st_sn,
+                $empresa_regular,
                 $calculo_id
             );
 
             if (!$stmt_update->execute()) {
-                throw new Exception("Erro ao executar UPDATE: " . $stmt_update->error);
+                throw new Exception("Erro ao atualizar cálculo: " . $stmt_update->error);
             }
 
             $stmt_update->close();
-
-            // ✅ Tudo certo
-            echo json_encode([
-                'status' => 'success',
-                'message' => 'Cálculo salvo e atualizado com sucesso.',
-                'calculo_id' => $calculo_id
-            ]);
-
-        } catch (Exception $e) {
-            error_log("Erro no processamento de cálculo: " . $e->getMessage());
-            echo json_encode([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ]);
-        } finally {
-            if (isset($stmt) && $stmt) $stmt->close();
-            if (isset($stmt_update) && $stmt_update) $stmt_update->close();
+        } else {
+            throw new Exception("Erro ao preparar update de cálculo: " . $conexao->error);
         }
-        // Salvar relação entre grupo de cálculo e produtos
+
+        // ==========================================================
+        // 4️⃣ SALVAR RELAÇÃO ENTRE GRUPO E PRODUTOS
+        // ==========================================================
         if (!empty($produtos_ids)) {
-            $query = "INSERT INTO grupo_calculo_produtos (grupo_calculo_id, produto_id) VALUES (?, ?)";
-            if ($stmt = $conexao->prepare($query)) {
+            $query_produtos = "INSERT INTO grupo_calculo_produtos (grupo_calculo_id, produto_id) VALUES (?, ?)";
+
+            if ($stmt = $conexao->prepare($query_produtos)) {
                 foreach ($produtos_ids as $produto_id) {
                     $stmt->bind_param("ii", $grupo_id, $produto_id);
-                    $stmt->execute();
+                    if (!$stmt->execute()) {
+                        throw new Exception("Erro ao vincular produto ID {$produto_id}: " . $stmt->error);
+                    }
                 }
                 $stmt->close();
+            } else {
+                throw new Exception("Erro ao preparar query de produtos: " . $conexao->error);
             }
         }
-        
+
+        // ==========================================================
+        // 5️⃣ FINALIZAR TRANSAÇÃO
+        // ==========================================================
         $conexao->commit();
-        
-        // Redirecionar para a competência da nota, não da data atual
-        header("Location: calculo-fronteira.php?action=visualizar&id=" . $calculo_id . "&competencia=" . $competencia_nota);
+
+        // Redirecionar para visualização
+        header("Location: calculo-fronteira.php?action=visualizar&id={$calculo_id}&competencia={$competencia_nota}");
         exit;
-        
+
     } catch (Exception $e) {
-        $conexao->rollback();
-        header("Location: fronteira-fiscal.php?competencia=" . $competencia_nota . "&error=Erro ao salvar cálculo: " . urlencode($e->getMessage()));
+        // Reverter alterações se algo falhar
+        if ($conexao->errno === 0) {
+            $conexao->rollback();
+        }
+
+        // Registrar erro no log
+        error_log("Erro no salvamento de cálculo: " . $e->getMessage());
+
+        // Redirecionar com mensagem
+        $erro = urlencode("Erro ao salvar cálculo: " . $e->getMessage());
+        header("Location: fronteira-fiscal.php?competencia={$competencia_nota}&error={$erro}");
         exit;
     }
 }
