@@ -240,58 +240,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
 
         // ==========================================================
-        // 3️⃣ ATUALIZAR DEMAIS CAMPOS DO CÁLCULO
+        // 3️⃣ ATUALIZAR DEMAIS CAMPOS DO CÁLCULO (VERSÃO SIMPLIFICADA)
         // ==========================================================
         $query_update = "
             UPDATE calculos_fronteira SET 
-                regime_fornecedor = ?, tipo_credito_icms = ?, icms_st = ?, 
-                mva_original = ?, mva_cnae = ?, aliquota_reducao = ?, 
-                diferencial_aliquota = ?, valor_gnre = ?, tipo_calculo = ?,
-                icms_tributado_simples_regular = ?, icms_tributado_simples_irregular = ?,
-                icms_tributado_real = ?, icms_uso_consumo = ?, icms_reducao = ?, 
-                mva_ajustada = ?, icms_reducao_sn = ?, icms_reducao_st_sn = ?, empresa_regular = ?
-            WHERE id = ?
-        ";
+                regime_fornecedor = '" . $conexao->real_escape_string($regime_fornecedor) . "', 
+                tipo_credito_icms = '" . $conexao->real_escape_string($tipo_credito_icms) . "', 
+                icms_st = " . floatval($icms_st) . ", 
+                mva_original = " . floatval($mva_original) . ", 
+                mva_cnae = " . floatval($mva_cnae) . ", 
+                aliquota_reducao = " . floatval($aliquota_reducao) . ", 
+                diferencial_aliquota = " . floatval($diferencial_aliquota) . ", 
+                valor_gnre = " . floatval($valor_gnre) . ", 
+                tipo_calculo = '" . $conexao->real_escape_string($tipo_calculo) . "',
+                icms_tributado_simples_regular = " . floatval($icms_tributado_simples_regular) . ", 
+                icms_tributado_simples_irregular = " . floatval($icms_tributado_simples_irregular) . ",
+                icms_tributado_real = " . floatval($icms_tributado_real) . ", 
+                icms_uso_consumo = " . floatval($icms_uso_consumo) . ", 
+                icms_reducao = " . floatval($icms_reducao) . ", 
+                mva_ajustada = " . floatval($mva_ajustada) . ", 
+                icms_reducao_sn = " . floatval($icms_reducao_sn) . ", 
+                icms_reducao_st_sn = " . floatval($icms_reducao_st_sn) . ", 
+                empresa_regular = '" . $conexao->real_escape_string($empresa_regular) . "'
+            WHERE id = " . intval($calculo_id);
 
-        if ($stmt_update = $conexao->prepare($query_update)) {
-            // CORREÇÃO DEFINITIVA: 19 parâmetros = 4 strings + 14 doubles + 1 integer
-            $types = "ssddddddsdddddddddsi";
-            
-            // DEBUG - Verificação
-            error_log("=== DEBUG BIND_PARAM ===");
-            error_log("Types: $types (length: " . strlen($types) . ")");
-            error_log("Expected: 19 parameters");
-            
-            $stmt_update->bind_param(
-                $types, 
-                $regime_fornecedor,          // 1 - s
-                $tipo_credito_icms,          // 2 - s  
-                $icms_st,                    // 3 - d
-                $mva_original,               // 4 - d
-                $mva_cnae,                   // 5 - d
-                $aliquota_reducao,           // 6 - d
-                $diferencial_aliquota,       // 7 - d
-                $valor_gnre,                 // 8 - d
-                $tipo_calculo,               // 9 - s
-                $icms_tributado_simples_regular,  // 10 - d
-                $icms_tributado_simples_irregular, // 11 - d
-                $icms_tributado_real,        // 12 - d
-                $icms_uso_consumo,           // 13 - d
-                $icms_reducao,               // 14 - d
-                $mva_ajustada,               // 15 - d
-                $icms_reducao_sn,            // 16 - d
-                $icms_reducao_st_sn,         // 17 - d
-                $empresa_regular,            // 18 - s
-                $calculo_id                  // 19 - i
-            );
-
-            if (!$stmt_update->execute()) {
-                throw new Exception("Erro ao atualizar cálculo: " . $stmt_update->error);
-            }
-
-            $stmt_update->close();
+        if ($conexao->query($query_update)) {
+            // Sucesso - continua o código
         } else {
-            throw new Exception("Erro ao preparar update de cálculo: " . $conexao->error);
+            throw new Exception("Erro ao atualizar cálculo: " . $conexao->error);
         }
 
         // ==========================================================
