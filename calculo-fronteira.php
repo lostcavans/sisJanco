@@ -254,37 +254,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ";
 
         if ($stmt_update = $conexao->prepare($query_update)) {
-            // DEBUG: Verificar parâmetros
-            $params = [
-                $regime_fornecedor,          // s
-                $tipo_credito_icms,          // s  
-                $icms_st,                    // d
-                $mva_original,               // d
-                $mva_cnae,                   // d
-                $aliquota_reducao,           // d
-                $diferencial_aliquota,       // d
-                $valor_gnre,                 // d
-                $tipo_calculo,               // s
-                $icms_tributado_simples_regular,  // d
-                $icms_tributado_simples_irregular, // d
-                $icms_tributado_real,        // d
-                $icms_uso_consumo,           // d
-                $icms_reducao,               // d
-                $mva_ajustada,               // d
-                $icms_reducao_sn,            // d
-                $icms_reducao_st_sn,         // d
-                $empresa_regular,            // s
-                $calculo_id                  // i
-            ];
-            
-            // String de tipos: 18 parâmetros = 2s + 15d + 1s + 1i = 19 caracteres
+            // CORREÇÃO DEFINITIVA: 19 parâmetros = 4 strings + 14 doubles + 1 integer
             $types = "ssddddddsdddddddddsi";
             
-            if (strlen($types) !== count($params)) {
-                throw new Exception("Erro: Número de tipos (" . strlen($types) . ") não corresponde ao número de parâmetros (" . count($params) . ")");
-            }
+            // DEBUG - Verificação
+            error_log("=== DEBUG BIND_PARAM ===");
+            error_log("Types: $types (length: " . strlen($types) . ")");
+            error_log("Expected: 19 parameters");
             
-            $stmt_update->bind_param($types, ...$params);
+            $stmt_update->bind_param(
+                $types, 
+                $regime_fornecedor,          // 1 - s
+                $tipo_credito_icms,          // 2 - s  
+                $icms_st,                    // 3 - d
+                $mva_original,               // 4 - d
+                $mva_cnae,                   // 5 - d
+                $aliquota_reducao,           // 6 - d
+                $diferencial_aliquota,       // 7 - d
+                $valor_gnre,                 // 8 - d
+                $tipo_calculo,               // 9 - s
+                $icms_tributado_simples_regular,  // 10 - d
+                $icms_tributado_simples_irregular, // 11 - d
+                $icms_tributado_real,        // 12 - d
+                $icms_uso_consumo,           // 13 - d
+                $icms_reducao,               // 14 - d
+                $mva_ajustada,               // 15 - d
+                $icms_reducao_sn,            // 16 - d
+                $icms_reducao_st_sn,         // 17 - d
+                $empresa_regular,            // 18 - s
+                $calculo_id                  // 19 - i
+            );
 
             if (!$stmt_update->execute()) {
                 throw new Exception("Erro ao atualizar cálculo: " . $stmt_update->error);
