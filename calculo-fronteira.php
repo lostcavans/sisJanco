@@ -254,8 +254,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ";
 
         if ($stmt_update = $conexao->prepare($query_update)) {
+            // CORREÇÃO: A string de tipos deve corresponder exatamente ao número de parâmetros
+            // Contando os parâmetros: 18 placeholders (?) na query
             $stmt_update->bind_param(
-                "ssddddddsddddddddsi",
+                "ssddddddsdddddddddsi", // 19 caracteres: 18 parâmetros + 1 para o WHERE
                 $regime_fornecedor,
                 $tipo_credito_icms,
                 $icms_st,
@@ -1209,7 +1211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt->close();
         }
         
-        // CÓDIGO CORRIGIDO - ADICIONAR
+        // CÓDIGO CORRIGIDO - ATUALIZAÇÃO DE CÁLCULO
         $query = "
             UPDATE calculos_fronteira 
             SET descricao = ?, valor_produto = ?, valor_frete = ?, valor_ipi = ?, 
@@ -1224,8 +1226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ";
 
         if ($stmt = $conexao->prepare($query)) {
+            // CORREÇÃO: 26 parâmetros + 2 para WHERE = 28 caracteres
             $stmt->bind_param(
-                'sdddddddssddddddsddddddddsii',
+                'sdddddddssddddddsdddddddddsii', // 28 caracteres
                 $descricao,
                 $valor_produto,
                 $valor_frete,
@@ -1263,6 +1266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             $stmt->close();
         }
+            
         
         $conexao->commit();
         
