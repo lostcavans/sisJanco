@@ -180,9 +180,9 @@ $stmt->close();
 $sql_categorias = "SELECT id, nome FROM gestao_categorias_processo WHERE ativo = 1 ORDER BY nome";
 $categorias = $conexao->query($sql_categorias)->fetch_all(MYSQLI_ASSOC);
 
-// Buscar TODAS las empresas disponibles - CORREGIDO
-$sql_empresas = "SELECT id, razao_social, nome_fantasia, cnpj, regime_tributario, atividade 
-                 FROM gestao_empresas 
+// ALTERAÇÃO: Buscar TODAS as empresas da tabela EMPRESAS (sistema contábil)
+$sql_empresas = "SELECT id, razao_social, cnpj, regime_tributario, atividade 
+                 FROM empresas 
                  WHERE ativo = 1 
                  ORDER BY razao_social";
 $empresas = $conexao->query($sql_empresas)->fetch_all(MYSQLI_ASSOC);
@@ -193,7 +193,7 @@ $sql = "SELECT p.*, u.nome_completo as responsavel_nome, c.nome as categoria_nom
                (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) as empresas_concluidas,
                (SELECT GROUP_CONCAT(e.razao_social SEPARATOR ', ') 
                 FROM gestao_processo_empresas pe 
-                LEFT JOIN gestao_empresas e ON pe.empresa_id = e.id 
+                LEFT JOIN empresas e ON pe.empresa_id = e.id  -- ALTERAÇÃO: empresas em vez de gestao_empresas
                 WHERE pe.processo_id = p.id) as empresas_nomes,
                CASE 
                    WHEN p.recorrente != 'nao' THEN CONCAT(p.titulo, ' (', p.recorrente, ')')
@@ -1659,7 +1659,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_processo'])
         // Validación antes de enviar
         form.addEventListener('submit', validarFormulario);
         
-        // Actualizar resumen en tiempo real
+        // Actualizar resumen en tempo real
         actualizarResumen();
     }
 
