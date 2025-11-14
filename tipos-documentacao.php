@@ -5,7 +5,7 @@ include("config-gestao.php");
 // Verificar autenticação e permissão
 if (!verificarAutenticacaoGestao() || !temPermissaoGestao('admin')) {
     $_SESSION['erro'] = 'Acesso não autorizado.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -504,7 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['excluir_tipo'])) {
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="documentacoes-empresas.php" class="nav-link">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link">Documentações</a></li>
             <li><a href="tipos-documentacao.php" class="nav-link active">Tipos de Doc.</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
@@ -515,7 +515,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['excluir_tipo'])) {
     <main class="container">
         <div class="page-header">
             <h1 class="page-title">Tipos de Documentação</h1>
-            <a href="documentacoes-empresas.php" class="btn btn-secondary">
+            <a href="gestao-empresas.php" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar
             </a>
         </div>

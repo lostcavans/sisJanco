@@ -18,13 +18,13 @@ if (isset($_GET['id']) && !empty($_GET['id'])) {
     $empresa_id = intval($_GET['empresa_id']);
 } else {
     $_SESSION['erro'] = 'Empresa não especificada.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
 if ($empresa_id <= 0) {
     $_SESSION['erro'] = 'ID da empresa inválido.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -49,13 +49,13 @@ try {
     
     if (!$empresa) {
         $_SESSION['erro'] = 'Empresa não encontrada no sistema.';
-        header("Location: documentacoes-empresas.php");
+        header("Location: gestao-empresas.php");
         exit;
     }
     
 } catch (Exception $e) {
     $_SESSION['erro'] = 'Erro ao carregar dados da empresa: ' . $e->getMessage();
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -721,7 +721,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['excluir_documentacao'
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="documentacoes-empresas.php" class="nav-link">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link">Documentações</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
             <li><a href="logout-gestao.php" class="nav-link">Sair</a></li>

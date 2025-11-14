@@ -14,7 +14,7 @@ $nivel_usuario = $_SESSION['usuario_nivel_gestao'];
 // Verificar se o ID foi passado
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     $_SESSION['erro'] = 'Empresa não especificada.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -22,7 +22,7 @@ $empresa_id = intval($_GET['id']);
 
 if ($empresa_id <= 0) {
     $_SESSION['erro'] = 'ID da empresa inválido.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -32,7 +32,7 @@ $stmt = $conexao->prepare($sql_empresa);
 
 if (!$stmt) {
     $_SESSION['erro'] = 'Erro no servidor ao buscar empresa.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -40,7 +40,7 @@ $stmt->bind_param("i", $empresa_id);
 
 if (!$stmt->execute()) {
     $_SESSION['erro'] = 'Erro ao buscar dados da empresa.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -50,7 +50,7 @@ $stmt->close();
 
 if (!$empresa) {
     $_SESSION['erro'] = 'Empresa não encontrada no sistema.';
-    header("Location: documentacoes-empresas.php");
+    header("Location: gestao-empresas.php");
     exit;
 }
 
@@ -776,7 +776,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marcar_recebido'])) {
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="documentacoes-empresas.php" class="nav-link active">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link active">Documentações</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
             <li><a href="logout-gestao.php" class="nav-link">Sair</a></li>
@@ -793,7 +793,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marcar_recebido'])) {
                 </div>
             </div>
             <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                <a href="documentacoes-empresas.php" class="btn btn-secondary">
+                <a href="gestao-empresas.php" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Voltar
                 </a>
                 <?php if (temPermissaoGestao('admin' and 'analista')): ?>
