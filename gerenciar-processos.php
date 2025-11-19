@@ -88,8 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['associar_processo']))
         $stmt_check = $conexao->prepare($sql_check);
         $stmt_check->bind_param("ii", $processo_id, $empresa_id);
         $stmt_check->execute();
+        $result_check = $stmt_check->get_result();
         
-        if ($stmt_check->get_result()->num_rows > 0) {
+        if ($result_check->num_rows > 0) {
             throw new Exception('Este processo já está associado à empresa.');
         }
         $stmt_check->close();
@@ -108,6 +109,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['associar_processo']))
                 throw new Exception('Erro ao associar processo: ' . $stmt->error);
             }
         }
+        
+        // Obter o ID da associação recém-criada
+        $associacao_id = $stmt->insert_id;
         $stmt->close();
         
         // Copiar checklist do processo PRÉ-DEFINIDO para a empresa
