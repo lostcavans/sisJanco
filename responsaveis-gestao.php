@@ -64,6 +64,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
     }
     $stmt->close();
 }
+
+// Processar edição de responsável
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar_responsavel'])) {
+    $usuario_id = $_POST['usuario_id'];
+    $username = trim($_POST['username']);
+    $email = trim($_POST['email']);
+    $nome_completo = trim($_POST['nome_completo']);
+    $nivel_acesso = $_POST['nivel_acesso'];
+    $departamento = trim($_POST['departamento']);
+    $cargo = trim($_POST['cargo']);
+    
+    // Verificar se foi informada uma nova senha
+    if (!empty($_POST['password'])) {
+        $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        $sql_update = "UPDATE gestao_usuarios SET username = ?, password = ?, email = ?, nome_completo = ?, nivel_acesso = ?, departamento = ?, cargo = ? WHERE id = ?";
+        $stmt = $conexao->prepare($sql_update);
+        $stmt->bind_param("sssssssi", $username, $password, $email, $nome_completo, $nivel_acesso, $departamento, $cargo, $usuario_id);
+    } else {
+        $sql_update = "UPDATE gestao_usuarios SET username = ?, email = ?, nome_completo = ?, nivel_acesso = ?, departamento = ?, cargo = ? WHERE id = ?";
+        $stmt = $conexao->prepare($sql_update);
+        $stmt->bind_param("ssssssi", $username, $email, $nome_completo, $nivel_acesso, $departamento, $cargo, $usuario_id);
+    }
+    
+    if ($stmt->execute()) {
+        // Registrar log
+        registrarLogGestao('EDITAR_USUARIO', 'Usuário ' . $username . ' atualizado');
+        
+        $_SESSION['sucesso'] = 'Responsável atualizado com sucesso!';
+        header("Location: responsaveis-gestao.php");
+        exit;
+    } else {
+        $_SESSION['erro'] = 'Erro ao atualizar responsável: ' . $stmt->error;
+    }
+    $stmt->close();
+}
+
+// Processar exclusão de responsável
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['excluir_responsavel'])) {
+    $usuario_id = $_POST['usuario_id'];
+    
+    // Verificar se o usuário tem processos associados
+    $sql_check = "SELECT COUNT(*) as total FROM gestao_processos WHERE responsavel_id = ?";
+    $stmt_check = $conexao->prepare($sql_check);
+    $stmt_check->bind_param("i", $usuario_id);
+    $stmt_check->execute();
+    $result = $stmt_check->get_result()->fetch_assoc();
+    $stmt_check->close();
+    
+    if ($result['total'] > 0) {
+        $_SESSION['erro'] = 'Não é possível excluir o responsável pois existem processos associados a ele.';
+        header("Location: responsaveis-gestao.php");
+        exit;
+    }
+    
+    // Fazer exclusão lógica (desativar usuário)
+    $sql_delete = "UPDATE gestao_usuarios SET ativo = 0 WHERE id = ?";
+    $stmt = $conexao->prepare($sql_delete);
+    $stmt->bind_param("i", $usuario_id);
+    
+    if ($stmt->execute()) {
+        // Registrar log
+        registrarLogGestao('EXCLUIR_USUARIO', 'Usuário ID ' . $usuario_id . ' excluído');
+        
+        $_SESSION['sucesso'] = 'Responsável excluído com sucesso!';
+        header("Location: responsaveis-gestao.php");
+        exit;
+    } else {
+        $_SESSION['erro'] = 'Erro ao excluir responsável: ' . $stmt->error;
+    }
+    $stmt->close();
+}
+
+// Buscar dados de um responsável específico para edição
+$responsavel_edicao = null;
+if (isset($_GET['editar']) && is_numeric($_GET['editar'])) {
+    $usuario_id = $_GET['editar'];
+    $sql_edicao = "SELECT * FROM gestao_usuarios WHERE id = ? AND ativo = 1";
+    $stmt_edicao = $conexao->prepare($sql_edicao);
+    $stmt_edicao->bind_param("i", $usuario_id);
+    $stmt_edicao->execute();
+    $responsavel_edicao = $stmt_edicao->get_result()->fetch_assoc();
+    $stmt_edicao->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -73,6 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
     <title>Responsáveis - Gestão de Processos</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Seu CSS existente permanece igual */
         :root {
             --primary: #4361ee;
             --primary-dark: #3a56d4;
@@ -188,6 +272,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
             background-color: var(--gray-light);
         }
 
+        .btn-danger {
+            background-color: #ef4444;
+        }
+
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
         .card {
             background: var(--white);
             border-radius: var(--border-radius);
@@ -298,7 +390,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
 
         .modal-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 1.5rem;
         }
@@ -375,6 +467,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
             border-left: 4px solid #ef4444;
         }
 
+        .password-note {
+            font-size: 0.8rem;
+            color: var(--gray);
+            margin-top: 0.25rem;
+        }
+
         /* Responsividade */
         @media (max-width: 768px) {
             .card-header, .responsible-item {
@@ -402,8 +500,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="gestao-empresas.php" class="nav-link">Documentações</a></li>
-            <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link">Empresas</a></li>
+            <li><a href="responsaveis-gestao.php" class="nav-link active">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
             <li><a href="logout-gestao.php" class="nav-link">Sair</a></li>
         </ul>
@@ -459,10 +557,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
                                 <small><?php echo $responsavel['total_processos']; ?> processos</small>
                             </div>
                             <div class="actions">
-                                <button class="action-btn edit-btn" title="Editar">
+                                <button class="action-btn edit-btn" title="Editar" onclick="editarResponsavel(<?php echo $responsavel['id']; ?>)">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="action-btn delete-btn" title="Excluir">
+                                <button class="action-btn delete-btn" title="Excluir" onclick="excluirResponsavel(<?php echo $responsavel['id']; ?>, '<?php echo htmlspecialchars($responsavel['nome_completo']); ?>')">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -529,32 +627,179 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adicionar_responsavel
         </div>
     </div>
 
+    <!-- Modal Editar Responsável -->
+    <div id="editResponsibleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Editar Responsável</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <form method="POST" action="" id="editForm">
+                <input type="hidden" name="editar_responsavel" value="1">
+                <input type="hidden" name="usuario_id" id="edit_usuario_id">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit_nome_completo">Nome Completo *</label>
+                        <input type="text" id="edit_nome_completo" name="nome_completo" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_username">Username *</label>
+                        <input type="text" id="edit_username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_email">Email *</label>
+                        <input type="email" id="edit_email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_password">Nova Senha</label>
+                        <input type="password" id="edit_password" name="password">
+                        <div class="password-note">Deixe em branco para manter a senha atual</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_nivel_acesso">Nível de Acesso *</label>
+                        <select id="edit_nivel_acesso" name="nivel_acesso" required>
+                            <option value="auxiliar">Auxiliar</option>
+                            <option value="analista">Analista</option>
+                            <option value="admin">Administrador</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_departamento">Departamento</label>
+                        <input type="text" id="edit_departamento" name="departamento">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_cargo">Cargo</label>
+                        <input type="text" id="edit_cargo" name="cargo">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelEditResponsible">Cancelar</button>
+                    <button type="submit" class="btn">Atualizar Responsável</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Confirmar Exclusão -->
+    <div id="deleteResponsibleModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Confirmar Exclusão</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <form method="POST" action="" id="deleteForm">
+                <input type="hidden" name="excluir_responsavel" value="1">
+                <input type="hidden" name="usuario_id" id="delete_usuario_id">
+                <div class="form-group">
+                    <p>Tem certeza que deseja excluir o responsável <strong id="delete_nome"></strong>?</p>
+                    <p class="password-note">Esta ação não pode ser desfeita. O responsável será desativado do sistema.</p>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelDeleteResponsible">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Excluir Responsável</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const modal = document.getElementById('addResponsibleModal');
-            const openBtn = document.getElementById('addResponsibleBtn');
-            const closeBtn = modal.querySelector('.close-btn');
-            const cancelBtn = document.getElementById('cancelAddResponsible');
+            // Modais
+            const addModal = document.getElementById('addResponsibleModal');
+            const editModal = document.getElementById('editResponsibleModal');
+            const deleteModal = document.getElementById('deleteResponsibleModal');
+            
+            // Botões abrir modal
+            const openAddBtn = document.getElementById('addResponsibleBtn');
+            
+            // Botões fechar modal
+            const closeAddBtn = addModal.querySelector('.close-btn');
+            const closeEditBtn = editModal.querySelector('.close-btn');
+            const closeDeleteBtn = deleteModal.querySelector('.close-btn');
+            
+            // Botões cancelar
+            const cancelAddBtn = document.getElementById('cancelAddResponsible');
+            const cancelEditBtn = document.getElementById('cancelEditResponsible');
+            const cancelDeleteBtn = document.getElementById('cancelDeleteResponsible');
 
-            function openModal() {
-                modal.classList.add('show');
+            // Funções para abrir modais
+            function openAddModal() {
+                addModal.classList.add('show');
             }
 
-            function closeModal() {
-                modal.classList.remove('show');
+            function openEditModal() {
+                editModal.classList.add('show');
             }
 
-            openBtn.addEventListener('click', openModal);
-            closeBtn.addEventListener('click', closeModal);
-            cancelBtn.addEventListener('click', closeModal);
+            function openDeleteModal() {
+                deleteModal.classList.add('show');
+            }
+
+            // Funções para fechar modais
+            function closeAddModal() {
+                addModal.classList.remove('show');
+            }
+
+            function closeEditModal() {
+                editModal.classList.remove('show');
+            }
+
+            function closeDeleteModal() {
+                deleteModal.classList.remove('show');
+            }
+
+            // Event listeners para abrir modais
+            openAddBtn.addEventListener('click', openAddModal);
+
+            // Event listeners para fechar modais
+            closeAddBtn.addEventListener('click', closeAddModal);
+            closeEditBtn.addEventListener('click', closeEditModal);
+            closeDeleteBtn.addEventListener('click', closeDeleteModal);
+
+            // Event listeners para cancelar
+            cancelAddBtn.addEventListener('click', closeAddModal);
+            cancelEditBtn.addEventListener('click', closeEditModal);
+            cancelDeleteBtn.addEventListener('click', closeDeleteModal);
 
             // Fechar modal ao clicar fora
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
-                    closeModal();
-                }
+            addModal.addEventListener('click', function(e) {
+                if (e.target === addModal) closeAddModal();
             });
+            editModal.addEventListener('click', function(e) {
+                if (e.target === editModal) closeEditModal();
+            });
+            deleteModal.addEventListener('click', function(e) {
+                if (e.target === deleteModal) closeDeleteModal();
+            });
+
+            // Verificar se deve abrir modal de edição via URL
+            <?php if (isset($_GET['editar']) && $responsavel_edicao): ?>
+                preencherFormularioEdicao(<?php echo json_encode($responsavel_edicao); ?>);
+                openEditModal();
+            <?php endif; ?>
         });
+
+        function editarResponsavel(id) {
+            window.location.href = 'responsaveis-gestao.php?editar=' + id;
+        }
+
+        function preencherFormularioEdicao(responsavel) {
+            document.getElementById('edit_usuario_id').value = responsavel.id;
+            document.getElementById('edit_nome_completo').value = responsavel.nome_completo;
+            document.getElementById('edit_username').value = responsavel.username;
+            document.getElementById('edit_email').value = responsavel.email;
+            document.getElementById('edit_nivel_acesso').value = responsavel.nivel_acesso;
+            document.getElementById('edit_departamento').value = responsavel.departamento || '';
+            document.getElementById('edit_cargo').value = responsavel.cargo || '';
+        }
+
+        function excluirResponsavel(id, nome) {
+            document.getElementById('delete_usuario_id').value = id;
+            document.getElementById('delete_nome').textContent = nome;
+            
+            const deleteModal = document.getElementById('deleteResponsibleModal');
+            deleteModal.classList.add('show');
+        }
     </script>
 </body>
 </html>

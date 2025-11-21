@@ -11,38 +11,51 @@ if (!verificarAutenticacaoGestao()) {
 $usuario_id = $_SESSION['usuario_id_gestao'];
 $nivel_usuario = $_SESSION['usuario_nivel_gestao'];
 
-// Buscar processos para o dashboard
-if (temPermissaoGestao('analista')) {
-    // Analistas veem todos os processos
-    $sql = "SELECT p.*, u.nome_completo as responsavel_nome, c.nome as categoria_nome,
-                   (SELECT COUNT(*) FROM gestao_processo_empresas pe WHERE pe.processo_id = p.id) as total_empresas,
-                   (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) as empresas_concluidas
-            FROM gestao_processos p 
-            LEFT JOIN gestao_usuarios u ON p.responsavel_id = u.id 
-            LEFT JOIN gestao_categorias_processo c ON p.categoria_id = c.id 
-            WHERE p.ativo = 1 
-            ORDER BY p.created_at DESC 
-            LIMIT 10";
-} else {
-    // Auxiliares veem apenas seus processos
-    $sql = "SELECT p.*, u.nome_completo as responsavel_nome, c.nome as categoria_nome,
-                   (SELECT COUNT(*) FROM gestao_processo_empresas pe WHERE pe.processo_id = p.id) as total_empresas,
-                   (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) as empresas_concluidas
-            FROM gestao_processos p 
-            LEFT JOIN gestao_usuarios u ON p.responsavel_id = u.id 
-            LEFT JOIN gestao_categorias_processo c ON p.categoria_id = c.id 
-            WHERE p.ativo = 1 AND p.responsavel_id = ?
-            ORDER BY p.created_at DESC 
-            LIMIT 10";
+// Verificar se há filtro aplicado
+$filtro_status = $_GET['status'] ?? 'todos';
+
+// Construir WHERE clause baseada no filtro
+$where_conditions = ["p.ativo = 1"];
+$where_params = [];
+$where_types = "";
+
+if ($filtro_status !== 'todos') {
+    $where_conditions[] = "p.status = ?";
+    $where_params[] = $filtro_status;
+    $where_types .= "s";
 }
 
-$stmt = $conexao->prepare($sql);
-if (temPermissaoGestao('analista')) {
-    $stmt->execute();
-} else {
-    $stmt->bind_param("i", $usuario_id);
-    $stmt->execute();
+if (!temPermissaoGestao('analista')) {
+    $where_conditions[] = "p.responsavel_id = ?";
+    $where_params[] = $usuario_id;
+    $where_types .= "i";
 }
+
+$where_clause = implode(" AND ", $where_conditions);
+
+// Buscar processos para o dashboard - QUERY ATUALIZADA
+$sql = "SELECT p.*, u.nome_completo as responsavel_nome, c.nome as categoria_nome,
+               (SELECT COUNT(*) FROM gestao_processo_empresas pe WHERE pe.processo_id = p.id) as total_empresas,
+               (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) as empresas_concluidas,
+               -- Calcular status real baseado no progresso
+               CASE 
+                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 
+                        (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 'concluido'
+                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) > 0 THEN 'em_andamento'
+                   ELSE 'pendente'
+               END as status_real
+        FROM gestao_processos p 
+        LEFT JOIN gestao_usuarios u ON p.responsavel_id = u.id 
+        LEFT JOIN gestao_categorias_processo c ON p.categoria_id = c.id 
+        WHERE $where_clause
+        ORDER BY p.created_at DESC 
+        LIMIT 10";
+
+$stmt = $conexao->prepare($sql);
+if (!empty($where_params)) {
+    $stmt->bind_param($where_types, ...$where_params);
+}
+$stmt->execute();
 $processos_dashboard = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
@@ -56,21 +69,56 @@ foreach ($processos_dashboard as &$processo) {
 }
 unset($processo);
 
-// Buscar estatísticas para o dashboard
+foreach ($processos_dashboard as &$processo) {
+    $processo['status_real'] = calcularStatusProcesso($processo['id']);
+    
+    if ($processo['total_empresas'] > 0) {
+        $processo['progresso'] = round(($processo['empresas_concluidas'] / $processo['total_empresas']) * 100);
+    } else {
+        $processo['progresso'] = 0;
+    }
+}
+unset($processo);
+
+// Buscar estatísticas para o dashboard (baseado no progresso real)
 if (temPermissaoGestao('analista')) {
     $sql_estatisticas = "SELECT 
         COUNT(*) as total_processos,
-        SUM(CASE WHEN status = 'concluido' THEN 1 ELSE 0 END) as processos_concluidos,
-        SUM(CASE WHEN status = 'em_andamento' THEN 1 ELSE 0 END) as processos_andamento,
-        SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END) as processos_pendentes
-        FROM gestao_processos WHERE ativo = 1";
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 1 
+            ELSE 0 
+        END) as processos_concluidos,
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) > 0 AND
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) < 
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 1 
+            ELSE 0 
+        END) as processos_andamento,
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 0 THEN 1 
+            ELSE 0 
+        END) as processos_pendentes
+        FROM gestao_processos p WHERE ativo = 1";
 } else {
     $sql_estatisticas = "SELECT 
         COUNT(*) as total_processos,
-        SUM(CASE WHEN status = 'concluido' THEN 1 ELSE 0 END) as processos_concluidos,
-        SUM(CASE WHEN status = 'em_andamento' THEN 1 ELSE 0 END) as processos_andamento,
-        SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END) as processos_pendentes
-        FROM gestao_processos WHERE ativo = 1 AND responsavel_id = ?";
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 1 
+            ELSE 0 
+        END) as processos_concluidos,
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) > 0 AND
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) < 
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 1 
+            ELSE 0 
+        END) as processos_andamento,
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 0 THEN 1 
+            ELSE 0 
+        END) as processos_pendentes
+        FROM gestao_processos p WHERE ativo = 1 AND responsavel_id = ?";
 }
 
 $stmt_estatisticas = $conexao->prepare($sql_estatisticas);
@@ -82,6 +130,14 @@ if (temPermissaoGestao('analista')) {
 }
 $estatisticas = $stmt_estatisticas->get_result()->fetch_assoc();
 $stmt_estatisticas->close();
+
+// Determinar classe ativa para os filtros
+$filtro_classes = [
+    'todos' => $filtro_status === 'todos' ? 'active' : '',
+    'concluido' => $filtro_status === 'concluido' ? 'active' : '',
+    'em_andamento' => $filtro_status === 'em_andamento' ? 'active' : '',
+    'pendente' => $filtro_status === 'pendente' ? 'active' : ''
+];
 ?>
 
 <!DOCTYPE html>
@@ -438,6 +494,39 @@ $stmt_estatisticas->close();
                 flex-direction: column;
             }
         }
+
+        /* Estilos para os filtros */
+.filter-card {
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.filter-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+}
+
+.filter-card.active {
+    border-color: var(--primary);
+    box-shadow: 0 6px 12px rgba(67, 97, 238, 0.2);
+}
+
+.filter-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
     </style>
 </head>
 <body>
@@ -449,7 +538,7 @@ $stmt_estatisticas->close();
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="gestao-empresas.php" class="nav-link">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link">Empresas</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
             <li><a href="logout-gestao.php" class="nav-link">Sair</a></li>
@@ -480,32 +569,51 @@ $stmt_estatisticas->close();
             </div>
         <?php endif; ?>
 
-        <!-- ESTATÍSTICAS -->
+        <!-- ESTATÍSTICAS COM FILTROS -->
         <div class="stats-grid">
-            <div class="stat-card">
+            <div class="stat-card filter-card <?php echo $filtro_classes['todos']; ?>" onclick="aplicarFiltro('todos')">
                 <div class="stat-number"><?php echo $estatisticas['total_processos']; ?></div>
                 <div class="stat-label">Total de Obrigações</div>
                 <i class="fas fa-tasks" style="font-size: 2rem; color: var(--primary); margin-top: 1rem;"></i>
             </div>
             
-            <div class="stat-card success">
+            <div class="stat-card success filter-card <?php echo $filtro_classes['concluido']; ?>" onclick="aplicarFiltro('concluido')">
                 <div class="stat-number"><?php echo $estatisticas['processos_concluidos']; ?></div>
                 <div class="stat-label">Obrigações Concluídas</div>
                 <i class="fas fa-check-circle" style="font-size: 2rem; color: #10b981; margin-top: 1rem;"></i>
             </div>
             
-            <div class="stat-card warning">
+            <div class="stat-card warning filter-card <?php echo $filtro_classes['em_andamento']; ?>" onclick="aplicarFiltro('em_andamento')">
                 <div class="stat-number"><?php echo $estatisticas['processos_andamento']; ?></div>
                 <div class="stat-label">Em Andamento</div>
                 <i class="fas fa-spinner" style="font-size: 2rem; color: #f59e0b; margin-top: 1rem;"></i>
             </div>
             
-            <div class="stat-card info">
+            <div class="stat-card info filter-card <?php echo $filtro_classes['pendente']; ?>" onclick="aplicarFiltro('pendente')">
                 <div class="stat-number"><?php echo $estatisticas['processos_pendentes']; ?></div>
                 <div class="stat-label">Obrigações Pendentes</div>
                 <i class="fas fa-clock" style="font-size: 2rem; color: #3b82f6; margin-top: 1rem;"></i>
             </div>
         </div>
+
+        <!-- Indicador de Filtro Ativo -->
+        <?php if ($filtro_status !== 'todos'): ?>
+        <div class="alert alert-info" style="margin-bottom: 1.5rem;">
+            <i class="fas fa-filter"></i>
+            Filtro ativo: 
+            <?php 
+            $filtros_nomes = [
+                'concluido' => 'Concluídos',
+                'em_andamento' => 'Em Andamento', 
+                'pendente' => 'Pendentes'
+            ];
+            echo $filtros_nomes[$filtro_status] ?? ucfirst($filtro_status);
+            ?>
+            <a href="dashboard-gestao.php" class="btn btn-small" style="margin-left: 1rem;">
+                <i class="fas fa-times"></i> Limpar Filtro
+            </a>
+        </div>
+        <?php endif; ?>
 
         <h2 style="margin-bottom: 1.5rem; color: #374151;">
             <i class="fas fa-tasks"></i> 
@@ -619,6 +727,33 @@ $stmt_estatisticas->close();
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Animar barras de progresso
+            const progressBars = document.querySelectorAll('.progress-fill-small');
+            progressBars.forEach(bar => {
+                const width = bar.style.width;
+                bar.style.width = '0%';
+                setTimeout(() => {
+                    bar.style.width = width;
+                }, 100);
+            });
+        });
+
+        // Função para aplicar filtro
+        function aplicarFiltro(status) {
+            const url = new URL(window.location.href);
+            if (status === 'todos') {
+                url.searchParams.delete('status');
+            } else {
+                url.searchParams.set('status', status);
+            }
+            window.location.href = url.toString();
+        }
+
+        // Adicionar classes de filtro ativo
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const statusFiltro = urlParams.get('status') || 'todos';
+            
             // Animar barras de progresso
             const progressBars = document.querySelectorAll('.progress-fill-small');
             progressBars.forEach(bar => {

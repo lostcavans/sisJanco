@@ -33,23 +33,7 @@ if (!$empresa) {
     exit;
 }
 
-// Copiar checklist do processo PRÉ-DEFINIDO para a empresa USANDO INSERT IGNORE
-$sql_checklist = "INSERT IGNORE INTO gestao_processo_checklist (processo_id, empresa_id, titulo, descricao, created_at, updated_at)
-                  SELECT ?, ?, titulo, descricao, NOW(), NOW()
-                  FROM gestao_processo_predefinido_checklist 
-                  WHERE processo_id = ?";
-
-$stmt_checklist = $conexao->prepare($sql_checklist);
-$stmt_checklist->bind_param("iii", $processo_id, $empresa_id, $processo_id);
-
-if (!$stmt_checklist->execute()) {
-    // Apenas log o erro, mas não interrompa o processo principal
-    error_log("Aviso: Erro ao copiar checklist para processo {$processo_id}: " . $stmt_checklist->error);
-}
-$stmt_checklist->close();
-
-// Buscar processos da empresa com checklists
-// Buscar processos da empresa com checklists
+// Buscar processos da empresa - QUERY CORRIGIDA
 $sql_processos = "SELECT 
     p.id,
     p.codigo,
@@ -57,74 +41,134 @@ $sql_processos = "SELECT
     p.descricao,
     p.status,
     p.prioridade,
-    p.data_prevista,
-    pc.id as checklist_id,
-    pc.titulo as checklist_titulo,
-    pc.descricao as checklist_descricao,
-    pc.concluido,
-    pc.data_conclusao,
-    pc.observacao,
-    pc.usuario_conclusao_id,
-    u.nome_completo as usuario_conclusao_nome,
+    p.categoria_id,
+    p.responsavel_id,
+    p.data_inicio,
+    p.recorrente,
+    pe.data_prevista as empresa_data_prevista,
+    pe.observacoes as empresa_observacoes,
     c.nome as categoria_nome,
     resp.nome_completo as responsavel_nome
 FROM gestao_processos p
 INNER JOIN gestao_processo_empresas pe ON p.id = pe.processo_id
-LEFT JOIN gestao_processo_checklist pc ON (p.id = pc.processo_id AND pc.empresa_id = ?)
-LEFT JOIN gestao_usuarios u ON pc.usuario_conclusao_id = u.id
 LEFT JOIN gestao_categorias_processo c ON p.categoria_id = c.id
 LEFT JOIN gestao_usuarios resp ON p.responsavel_id = resp.id
 WHERE pe.empresa_id = ?
-ORDER BY p.titulo, pc.id";
+ORDER BY p.titulo";
 
-$stmt = $conexao->prepare($sql_processos);
-$stmt->bind_param("ii", $empresa_id, $empresa_id);
-$stmt->execute();
-$processos_data = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+$stmt_processos = $conexao->prepare($sql_processos);
+$stmt_processos->bind_param("i", $empresa_id);
+$stmt_processos->execute();
+$processos = $stmt_processos->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt_processos->close(); // Fechar apenas uma vez
 
-// Agrupar por processo
-$processos_agrupados = [];
-foreach ($processos_data as $item) {
-    $processo_id = $item['id'];
-    
-    if (!isset($processos_agrupados[$processo_id])) {
-        $processos_agrupados[$processo_id] = [
-            'processo' => [
-                'id' => $item['id'],
-                'codigo' => $item['codigo'],
-                'titulo' => $item['titulo'],
-                'descricao' => $item['descricao'],
-                'status' => $item['status'],
-                'prioridade' => $item['prioridade'],
-                'categoria_nome' => $item['categoria_nome'],
-                'responsavel_nome' => $item['responsavel_nome'],
-                'data_prevista' => $item['data_prevista']
-            ],
-            'checklist' => []
-        ];
-    }
-    
-    if ($item['checklist_id']) {
-        $processos_agrupados[$processo_id]['checklist'][] = [
-            'id' => $item['checklist_id'],
-            'titulo' => $item['checklist_titulo'],
-            'descricao' => $item['checklist_descricao'],
-            'concluido' => $item['concluido'],
-            'data_conclusao' => $item['data_conclusao'],
-            'observacao' => $item['observacao'],
-            'usuario_conclusao_nome' => $item['usuario_conclusao_nome']
-        ];
-    }
-}
-
-// Calcular estatísticas
-$total_processos = count($processos_agrupados);
+// Calcular estatísticas CORRETAMENTE
+$total_processos = count($processos);
 $processos_concluidos = 0;
 $processos_pendentes = 0;
 $processos_andamento = 0;
 
-foreach ($processos_agrupados as $dados) {
+foreach ($processos as $processo) {
+    // Para cada processo, buscar informações de checklist
+    $processo_id = $processo['id'];
+    
+    $sql_checklist_stats = "SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as concluidos
+        FROM gestao_processo_checklist 
+        WHERE processo_id = ? AND empresa_id = ?";
+    
+    $stmt_stats = $conexao->prepare($sql_checklist_stats);
+    $stmt_stats->bind_param("ii", $processo_id, $empresa_id);
+    $stmt_stats->execute();
+    $stats = $stmt_stats->get_result()->fetch_assoc();
+    $stmt_stats->close();
+    
+    $total_checklists = $stats['total'] ?? 0;
+    $checklists_concluidos = $stats['concluidos'] ?? 0;
+    
+    // Determinar status baseado no progresso dos checklists
+    if ($total_checklists > 0) {
+        $progresso = ($checklists_concluidos / $total_checklists) * 100;
+        
+        if ($progresso == 100) {
+            $processos_concluidos++;
+        } elseif ($progresso > 0 && $progresso < 100) {
+            $processos_andamento++;
+        } else {
+            $processos_pendentes++;
+        }
+    } else {
+        // Se não há checklists, considerar como pendente
+        $processos_pendentes++;
+    }
+}
+
+$progresso = $total_processos > 0 ? round(($processos_concluidos / $total_processos) * 100) : 0;
+
+// DEBUG: Verificar estatísticas
+error_log("=== ESTATÍSTICAS CALCULADAS ===");
+error_log("Total: $total_processos");
+error_log("Concluídos: $processos_concluidos");
+error_log("Andamento: $processos_andamento");
+error_log("Pendentes: $processos_pendentes");
+error_log("===============================");
+
+// Buscar checklists para cada processo - COM NOME DO USUÁRIO
+$processos_com_checklists = [];
+foreach ($processos as $processo) {
+    $processo_id = $processo['id'];
+    
+    // Query CORRIGIDA - SEM COMENTÁRIOS DENTRO DA STRING SQL
+    $sql_checklist = "SELECT 
+        c.id,
+        c.processo_id,
+        c.empresa_id,
+        c.titulo,
+        c.descricao,
+        c.concluido,
+        c.data_conclusao,
+        c.usuario_conclusao_id,
+        c.observacao,
+        c.ordem,
+        c.created_at,
+        c.updated_at,
+        c.imagem_nome,
+        c.imagem_tipo,
+        c.imagem_tamanho,
+        u.nome_completo as usuario_conclusao_nome
+    FROM gestao_processo_checklist c
+    LEFT JOIN gestao_usuarios u ON c.usuario_conclusao_id = u.id
+    WHERE c.processo_id = $processo_id AND c.empresa_id = $empresa_id
+    ORDER BY c.ordem, c.id";
+    
+    $result_checklist = $conexao->query($sql_checklist);
+    
+    if ($result_checklist) {
+        $checklists = [];
+        while ($row = $result_checklist->fetch_assoc()) {
+            $checklists[] = $row;
+        }
+        
+        error_log("Processo $processo_id - Checklists com imagem: " . count($checklists));
+    } else {
+        error_log("ERRO SQL Checklist: " . $conexao->error);
+        $checklists = [];
+    }
+    
+    $processos_com_checklists[] = [
+        'processo' => $processo,
+        'checklists' => $checklists
+    ];
+}
+
+// Calcular estatísticas
+$total_processos = count($processos_com_checklists);
+$processos_concluidos = 0;
+$processos_pendentes = 0;
+$processos_andamento = 0;
+
+foreach ($processos_com_checklists as $dados) {
     switch ($dados['processo']['status']) {
         case 'concluido':
             $processos_concluidos++;
@@ -138,7 +182,126 @@ foreach ($processos_agrupados as $dados) {
 }
 
 $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_processos) * 100) : 0;
+
+// DEBUG: Verificar o que está sendo carregado
+error_log("=== DEBUG EMPRESA-PROCESSOS ===");
+error_log("Empresa ID: " . $empresa_id);
+error_log("Total de processos: " . count($processos_com_checklists));
+
+foreach ($processos_com_checklists as $index => $dados) {
+    $processo = $dados['processo'];
+    $checklists = $dados['checklists'];
+    error_log("Processo {$processo['id']} - {$processo['titulo']}: " . count($checklists) . " checklists");
+    
+    foreach ($checklists as $checklist) {
+        error_log("  Checklist: {$checklist['titulo']} (ID: {$checklist['id']})");
+    }
+}
+error_log("=== FIM DEBUG ===");
+
+
+// Verificar se há filtro aplicado
+$filtro_status = $_GET['status'] ?? 'todos';
+
+// Aplicar filtro aos processos se necessário
+if ($filtro_status !== 'todos') {
+    $processos_filtrados = [];
+    
+    foreach ($processos as $processo) {
+        // Para cada processo, buscar informações de checklist para determinar status
+        $processo_id = $processo['id'];
+        
+        $sql_checklist_stats = "SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as concluidos
+            FROM gestao_processo_checklist 
+            WHERE processo_id = ? AND empresa_id = ?";
+        
+        $stmt_filter = $conexao->prepare($sql_checklist_stats);
+        $stmt_filter->bind_param("ii", $processo_id, $empresa_id);
+        $stmt_filter->execute();
+        $stats = $stmt_filter->get_result()->fetch_assoc();
+        $stmt_filter->close();
+        
+        $total_checklists = $stats['total'] ?? 0;
+        $checklists_concluidos = $stats['concluidos'] ?? 0;
+        
+        // Determinar status baseado no progresso
+        $status_processo = 'pendente'; // padrão
+        
+        if ($total_checklists > 0) {
+            $progresso_individual = ($checklists_concluidos / $total_checklists) * 100;
+            
+            if ($progresso_individual == 100) {
+                $status_processo = 'concluido';
+            } elseif ($progresso_individual > 0 && $progresso_individual < 100) {
+                $status_processo = 'em_andamento';
+            }
+        }
+        
+        // Aplicar filtro
+        if ($status_processo === $filtro_status) {
+            $processos_filtrados[] = $processo;
+        }
+    }
+    
+    $processos = $processos_filtrados;
+    
+    // Recalcular estatísticas baseadas no filtro
+    $total_processos = count($processos);
+    $processos_concluidos = 0;
+    $processos_pendentes = 0;
+    $processos_andamento = 0;
+
+    foreach ($processos as $processo) {
+        $processo_id = $processo['id'];
+        
+        $sql_checklist_stats = "SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as concluidos
+            FROM gestao_processo_checklist 
+            WHERE processo_id = ? AND empresa_id = ?";
+        
+        $stmt_recalc = $conexao->prepare($sql_checklist_stats);
+        $stmt_recalc->bind_param("ii", $processo_id, $empresa_id);
+        $stmt_recalc->execute();
+        $stats = $stmt_recalc->get_result()->fetch_assoc();
+        $stmt_recalc->close();
+        
+        $total_checklists = $stats['total'] ?? 0;
+        $checklists_concluidos = $stats['concluidos'] ?? 0;
+        
+        if ($total_checklists > 0) {
+            $progresso = ($checklists_concluidos / $total_checklists) * 100;
+            
+            if ($progresso == 100) {
+                $processos_concluidos++;
+            } elseif ($progresso > 0 && $progresso < 100) {
+                $processos_andamento++;
+            } else {
+                $processos_pendentes++;
+            }
+        } else {
+            $processos_pendentes++;
+        }
+    }
+
+    
+
+    $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_processos) * 100) : 0;
+}
+
+// Determinar classe ativa para os filtros
+$filtro_classes = [
+    'todos' => $filtro_status === 'todos' ? 'active' : '',
+    'concluido' => $filtro_status === 'concluido' ? 'active' : '',
+    'em_andamento' => $filtro_status === 'em_andamento' ? 'active' : '',
+    'pendente' => $filtro_status === 'pendente' ? 'active' : ''
+];
 ?>
+
+
+
 
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -202,32 +365,52 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
             </div>
         <?php endif; ?>
 
-        <!-- Estatísticas -->
+        <!-- Estatísticas COM FILTROS -->
         <div class="stats-grid fade-in">
-            <div class="stat-card total">
+            <div class="stat-card total filter-card <?php echo $filtro_classes['todos']; ?>" onclick="aplicarFiltro('todos')">
                 <div class="stat-number"><?php echo $total_processos; ?></div>
                 <div class="stat-label">Total de Processos</div>
                 <i class="fas fa-tasks" style="font-size: 2rem; margin-top: 1rem; opacity: 0.7;"></i>
             </div>
             
-            <div class="stat-card concluido">
+            <div class="stat-card concluido filter-card <?php echo $filtro_classes['concluido']; ?>" onclick="aplicarFiltro('concluido')">
                 <div class="stat-number"><?php echo $processos_concluidos; ?></div>
                 <div class="stat-label">Concluídos</div>
                 <i class="fas fa-check-circle" style="font-size: 2rem; margin-top: 1rem; opacity: 0.7;"></i>
             </div>
             
-            <div class="stat-card pendente">
+            <div class="stat-card pendente filter-card <?php echo $filtro_classes['em_andamento']; ?>" onclick="aplicarFiltro('em_andamento')">
                 <div class="stat-number"><?php echo $processos_andamento; ?></div>
                 <div class="stat-label">Em Andamento</div>
                 <i class="fas fa-sync-alt" style="font-size: 2rem; margin-top: 1rem; opacity: 0.7;"></i>
             </div>
             
-            <div class="stat-card atrasado">
+            <div class="stat-card atrasado filter-card <?php echo $filtro_classes['pendente']; ?>" onclick="aplicarFiltro('pendente')">
                 <div class="stat-number"><?php echo $processos_pendentes; ?></div>
                 <div class="stat-label">Pendentes</div>
                 <i class="fas fa-clock" style="font-size: 2rem; margin-top: 1rem; opacity: 0.7;"></i>
             </div>
         </div>
+
+        <!-- Indicador de Filtro Ativo -->
+        <?php if ($filtro_status !== 'todos'): ?>
+        <div class="alert alert-info fade-in" style="margin-bottom: 1.5rem;">
+            <i class="fas fa-filter"></i>
+            Filtro ativo: 
+            <?php 
+            $filtros_nomes = [
+                'concluido' => 'Concluídos',
+                'em_andamento' => 'Em Andamento', 
+                'pendente' => 'Pendentes'
+            ];
+            echo $filtros_nomes[$filtro_status] ?? ucfirst($filtro_status);
+            ?>
+            - Mostrando <?php echo count($processos_com_checklists); ?> processo(s)
+            <a href="empresa-processos.php?id=<?php echo $empresa_id; ?>" class="btn btn-small" style="margin-left: 1rem;">
+                <i class="fas fa-times"></i> Limpar Filtro
+            </a>
+        </div>
+        <?php endif; ?>
 
         <!-- Barra de Progresso -->
         <?php if ($total_processos > 0): ?>
@@ -247,28 +430,50 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
         <?php endif; ?>
 
         <!-- Lista de Processos -->
-        <?php if (count($processos_agrupados) > 0): ?>
-            <?php foreach ($processos_agrupados as $processo_id => $dados): ?>
+        <?php if (count($processos_com_checklists) > 0): ?>
+            <?php foreach ($processos_com_checklists as $dados): ?>
+                <?php $processo = $dados['processo']; ?>
                 <div class="processo-group fade-in">
                     <div class="group-header">
                         <div class="group-title">
                             <i class="fas fa-tasks"></i>
-                            <?php echo htmlspecialchars($dados['processo']['titulo']); ?>
+                            <?php echo htmlspecialchars($processo['titulo']); ?>
                             <small style="color: var(--gray); margin-left: 10px;">
-                                <?php echo htmlspecialchars($dados['processo']['codigo']); ?>
+                                <?php echo htmlspecialchars($processo['codigo']); ?>
                             </small>
                         </div>
-                        <div class="status-badge status-<?php echo $dados['processo']['status']; ?>">
-                            <?php if ($dados['processo']['status'] === 'pendente'): ?>
-                                <i class="fas fa-clock"></i>
-                            <?php elseif ($dados['processo']['status'] === 'em_andamento'): ?>
-                                <i class="fas fa-sync-alt"></i>
-                            <?php elseif ($dados['processo']['status'] === 'concluido'): ?>
-                                <i class="fas fa-check"></i>
-                            <?php else: ?>
-                                <i class="fas fa-exclamation-triangle"></i>
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <?php if (temPermissaoGestao('admin') || temPermissaoGestao('analista')): ?>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button type="button" class="btn btn-small" 
+                                            onclick="abrirModalEditarProcessoEmpresa(<?php echo $empresa_id; ?>, <?php echo $processo['id']; ?>, 
+                                                    '<?php echo htmlspecialchars($processo['titulo']); ?>',
+                                                    '<?php echo $processo['empresa_data_prevista'] ?? ''; ?>',
+                                                    `<?php echo addslashes($processo['empresa_observacoes'] ?? ''); ?>`)"
+                                            title="Editar informações para esta empresa">
+                                        <i class="fas fa-building"></i> Config. Empresa
+                                    </button>
+                                    
+                                    <button type="button" class="btn btn-small btn-primary" 
+                                            onclick="abrirModalGerenciarChecklist(<?php echo $empresa_id; ?>, <?php echo $processo['id']; ?>, 
+                                                    '<?php echo htmlspecialchars($processo['titulo']); ?>')"
+                                            title="Gerenciar checklist para esta empresa">
+                                        <i class="fas fa-list-check"></i> Gerenciar Checklist
+                                    </button>
+                                </div>
                             <?php endif; ?>
-                            <?php echo ucfirst($dados['processo']['status']); ?>
+                            <div class="status-badge status-<?php echo $processo['status']; ?>">
+                                <?php if ($processo['status'] === 'pendente'): ?>
+                                    <i class="fas fa-clock"></i>
+                                <?php elseif ($processo['status'] === 'em_andamento'): ?>
+                                    <i class="fas fa-sync-alt"></i>
+                                <?php elseif ($processo['status'] === 'concluido'): ?>
+                                    <i class="fas fa-check"></i>
+                                <?php else: ?>
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                <?php endif; ?>
+                                <?php echo ucfirst($processo['status']); ?>
+                            </div>
                         </div>
                     </div>
                     
@@ -278,30 +483,45 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
                             <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
                                 <div>
                                     <strong><i class="fas fa-layer-group"></i> Departamento:</strong>
-                                    <?php echo htmlspecialchars($dados['processo']['categoria_nome']); ?>
+                                    <?php echo htmlspecialchars($processo['categoria_nome']); ?>
                                 </div>
                                 <div>
                                     <strong><i class="fas fa-user"></i> Responsável:</strong>
-                                    <?php echo htmlspecialchars($dados['processo']['responsavel_nome']); ?>
+                                    <?php echo htmlspecialchars($processo['responsavel_nome']); ?>
                                 </div>
                                 <div>
                                     <strong><i class="fas fa-flag"></i> Prioridade:</strong>
-                                    <span class="priority-badge priority-<?php echo $dados['processo']['prioridade']; ?>">
-                                        <?php echo ucfirst($dados['processo']['prioridade']); ?>
+                                    <span class="priority-badge priority-<?php echo $processo['prioridade']; ?>">
+                                        <?php echo ucfirst($processo['prioridade']); ?>
                                     </span>
                                 </div>
-                                <?php if ($dados['processo']['data_prevista']): ?>
+                                <?php if ($processo['empresa_data_prevista']): ?>
                                 <div>
                                     <strong><i class="fas fa-calendar"></i> Data Prevista:</strong>
-                                    <?php echo date('d/m/Y', strtotime($dados['processo']['data_prevista'])); ?>
+                                    <?php echo date('d/m/Y', strtotime($processo['empresa_data_prevista'])); ?>
                                 </div>
+                                <?php if ($dados['tem_personalizado'] ?? false): ?>
+                                    <span class="badge" style="background: #ff6b6b; color: white; margin-left: 10px;">
+                                        <i class="fas fa-star"></i> Personalizado
+                                    </span>
+                                <?php endif; ?>
                                 <?php endif; ?>
                             </div>
+                            
+                            <!-- Observações específicas da empresa -->
+                            <?php if ($processo['empresa_observacoes']): ?>
+                            <div style="margin-top: 1rem; padding: 0.75rem; background: white; border-radius: 4px; border-left: 4px solid var(--primary);">
+                                <strong><i class="fas fa-sticky-note"></i> Observações para esta empresa:</strong>
+                                <div style="margin-top: 0.5rem; color: var(--dark);">
+                                    <?php echo nl2br(htmlspecialchars($processo['empresa_observacoes'])); ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                         </div>
 
                         <!-- Checklist -->
-                        <?php if (count($dados['checklist']) > 0): ?>
-                            <?php foreach ($dados['checklist'] as $item): ?>
+                        <?php if (count($dados['checklists']) > 0): ?>
+                            <?php foreach ($dados['checklists'] as $item): ?>
                                 <div class="checklist-item <?php echo $item['concluido'] ? 'concluido' : ''; ?>">
                                     <div class="checklist-checkbox">
                                         <?php if (temPermissaoGestao('auxiliar') || temPermissaoGestao('admin') || temPermissaoGestao('analista')): ?>
@@ -326,15 +546,31 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
                                                 <?php echo htmlspecialchars($item['descricao']); ?>
                                             </div>
                                         <?php endif; ?>
+
+
+                                        <!-- Imagem do checklist -->
+                                        <?php if (!empty($item['imagem_nome'])): ?>
+                                            <div class="checklist-imagem" style="margin-top: 0.5rem;">
+                                                <img src="uploads/checklist-images/<?php echo htmlspecialchars($item['imagem_nome']); ?>" 
+                                                    alt="Imagem do checklist" 
+                                                    style="max-width: 200px; max-height: 150px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer;"
+                                                    onclick="abrirModalImagem('<?php echo htmlspecialchars($item['imagem_nome']); ?>')">
+                                                <div style="font-size: 0.8rem; color: #666; margin-top: 0.25rem;">
+                                                    <i class="fas fa-image"></i> Clique para ampliar
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
                                         
-                                        <!-- Informações de conclusão -->
+                                        <!-- Informações de conclusão - VERSÃO CORRIGIDA -->
                                         <?php if ($item['concluido'] && $item['data_conclusao']): ?>
                                             <div class="checklist-info">
                                                 <small>
                                                     <i class="fas fa-check-circle"></i>
                                                     Concluído em <?php echo date('d/m/Y H:i', strtotime($item['data_conclusao'])); ?>
-                                                    <?php if ($item['usuario_conclusao_nome']): ?>
+                                                    <?php if (!empty($item['usuario_conclusao_nome'])): ?>
                                                         por <?php echo htmlspecialchars($item['usuario_conclusao_nome']); ?>
+                                                    <?php elseif (!empty($item['usuario_conclusao_id'])): ?>
+                                                        por Usuário ID: <?php echo $item['usuario_conclusao_id']; ?>
                                                     <?php endif; ?>
                                                 </small>
                                             </div>
@@ -349,10 +585,18 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
                                         <?php endif; ?>
                                     </div>
                                     
-                                    <!-- Botão para adicionar observações -->
+                                    <!-- Botão para editar item do checklist -->
                                     <?php if (temPermissaoGestao('auxiliar') || temPermissaoGestao('admin') || temPermissaoGestao('analista')): ?>
                                         <button type="button" class="btn btn-small" 
-                                                onclick="abrirModalObservacoes(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['titulo']); ?>')">
+                                                onclick="abrirModalEditarChecklist(<?php echo $item['id']; ?>, 
+                                                        '<?php echo htmlspecialchars($item['titulo']); ?>',
+                                                        `<?php echo addslashes($item['descricao'] ?? ''); ?>`,
+                                                        `<?php echo addslashes($item['observacao'] ?? ''); ?>`,
+                                                        <?php echo $item['concluido'] ? '1' : '0'; ?>,
+                                                        '<?php echo $item['data_conclusao'] ?? ''; ?>',
+                                                        <?php echo $empresa_id; ?>,
+                                                        '<?php echo $item['imagem_nome'] ?? ''; ?>')"  ← AQUI ESTÁ PASSANDO A IMAGEM
+                                                title="Editar item do checklist">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                     <?php endif; ?>
@@ -362,6 +606,13 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
                             <div style="text-align: center; padding: 2rem; color: var(--gray);">
                                 <i class="fas fa-list-check" style="font-size: 2rem; margin-bottom: 1rem;"></i>
                                 <p>Nenhum checklist definido para este processo</p>
+                                <?php if (temPermissaoGestao('admin') || temPermissaoGestao('analista')): ?>
+                                    <button type="button" class="btn btn-small" 
+                                            onclick="abrirModalGerenciarChecklist(<?php echo $empresa_id; ?>, <?php echo $processo['id']; ?>, 
+                                                    '<?php echo htmlspecialchars($processo['titulo']); ?>')">
+                                        <i class="fas fa-plus"></i> Criar Checklist
+                                    </button>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -381,44 +632,594 @@ $progresso = $total_processos > 0 ? round(($processos_concluidos / $total_proces
         <?php endif; ?>
     </main>
 
-    <!-- Modal para Observações -->
-    <div id="modalObservacoes" class="modal">
+    <!-- Modal para Editar Processo da Empresa -->
+    <div id="modalEditarProcessoEmpresa" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">Adicionar Observações</h2>
-                <button class="close-btn" onclick="fecharModal('modalObservacoes')">&times;</button>
+                <h2 class="modal-title">Editar Processo para esta Empresa</h2>
+                <button class="close-btn" onclick="fecharModal('modalEditarProcessoEmpresa')">&times;</button>
             </div>
             
-            <form method="POST" action="salvar_observacoes.php">
-                <input type="hidden" id="observacao_checklist_id" name="checklist_id">
+            <form method="POST" action="atualizar_processo_empresa.php">
+                <input type="hidden" id="editar_empresa_id" name="empresa_id">
+                <input type="hidden" id="editar_processo_id" name="processo_id">
                 
                 <div class="form-group">
-                    <label for="observacao_titulo">Etapa:</label>
-                    <div id="observacao_titulo" style="padding: 0.5rem; background: #f8f9fa; border-radius: 4px; font-weight: 600;"></div>
+                    <label for="editar_processo_titulo">Processo:</label>
+                    <div id="editar_processo_titulo" style="padding: 0.5rem; background: #f8f9fa; border-radius: 4px; font-weight: 600;"></div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="observacao_texto">Observações:</label>
-                    <textarea id="observacao_texto" name="observacao" 
-                              placeholder="Digite suas observações sobre esta etapa..."
-                              rows="4"></textarea>
+                    <label for="editar_empresa_data_prevista">Data Prevista para esta Empresa</label>
+                    <input type="date" id="editar_empresa_data_prevista" name="data_prevista">
+                </div>
+                
+                <div class="form-group">
+                    <label for="editar_empresa_observacoes">Observações para esta Empresa</label>
+                    <textarea id="editar_empresa_observacoes" name="observacoes" 
+                            placeholder="Observações específicas para esta empresa..."
+                            rows="4"></textarea>
                 </div>
                 
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModal('modalObservacoes')">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModal('modalEditarProcessoEmpresa')">
                         Cancelar
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Salvar Observações
+                        <i class="fas fa-save"></i> Salvar Alterações
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- Modal para Gerenciar Checklist -->
+    <div id="modalGerenciarChecklist" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Gerenciar Checklist</h2>
+                <button class="close-btn" onclick="fecharModal('modalGerenciarChecklist')">&times;</button>
+            </div>
+            
+            <form method="POST" action="salvar_checklist_empresa.php">
+                <input type="hidden" id="gerenciar_empresa_id" name="empresa_id">
+                <input type="hidden" id="gerenciar_processo_id" name="processo_id">
+                
+                <div class="form-group">
+                    <label>Processo:</label>
+                    <div id="gerenciar_processo_titulo" style="padding: 0.5rem; background: #f8f9fa; border-radius: 4px; font-weight: 600;"></div>
+                </div>
+                
+                <div class="form-section">
+                    <h3><i class="fas fa-list-check"></i> Itens do Checklist</h3>
+                    <small style="color: var(--gray); margin-bottom: 1rem; display: block;">
+                        Estes itens são específicos para esta empresa. Você pode adicionar, editar ou remover itens.
+                    </small>
+                    
+                    <div id="checklist-container">
+                        <!-- Itens serão adicionados dinamicamente aqui -->
+                    </div>
+                    
+                    <button type="button" class="btn btn-secondary" onclick="adicionarItemChecklist()">
+                        <i class="fas fa-plus"></i> Adicionar Item
+                    </button>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModal('modalGerenciarChecklist')">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Salvar Checklist
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal para Editar Item do Checklist COM IMAGEM -->
+    <div id="modalEditarChecklist" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Editar Item do Checklist</h2>
+                <button class="close-btn" onclick="fecharModal('modalEditarChecklist')">&times;</button>
+            </div>
+            
+            <form method="POST" action="atualizar_item_checklist.php" enctype="multipart/form-data">
+                <input type="hidden" id="editar_checklist_id" name="checklist_id">
+                <input type="hidden" id="editar_empresa_id_checklist" name="empresa_id">
+                <input type="hidden" id="editar_imagem_atual" name="imagem_atual">
+                <input type="hidden" id="editar_remover_imagem" name="remover_imagem" value="0">
+                
+                <div class="form-group">
+                    <label for="editar_checklist_titulo" class="required">Título do Item</label>
+                    <input type="text" id="editar_checklist_titulo" name="titulo" required 
+                        placeholder="Digite o título do item...">
+                </div>
+                
+                <div class="form-group">
+                    <label for="editar_checklist_descricao">Descrição</label>
+                    <textarea id="editar_checklist_descricao" name="descricao" 
+                            placeholder="Descreva este item do checklist..."
+                            rows="3"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editar_checklist_observacao">Observações</label>
+                    <textarea id="editar_checklist_observacao" name="observacao" 
+                            placeholder="Observações sobre este item..."
+                            rows="3"></textarea>
+                    <small style="color: var(--gray);">Estas observações serão visíveis para todos os usuários.</small>
+                </div>
+
+                <!-- SEÇÃO DE IMAGEM MELHORADA -->
+                <div class="form-section">
+                    <h3><i class="fas fa-image"></i> Imagem do Item</h3>
+                    
+                    <div class="form-group">
+                        <label for="editar_checklist_imagem">Upload de Imagem</label>
+                        <input type="file" id="editar_checklist_imagem" name="imagem" 
+                            accept="image/*" class="form-input">
+                        <small style="color: var(--gray);">
+                            Formatos: JPG, PNG, GIF, WEBP (Máx: 5MB)
+                        </small>
+                    </div>
+                    
+                    <!-- Preview da imagem atual MELHORADO -->
+                    <div id="preview_imagem_container" style="display: none; margin-top: 1rem;">
+                        <label>Imagem Atual do Item:</label>
+                        <div style="border: 2px dashed #ddd; padding: 1rem; border-radius: 8px; text-align: center; background: #f8f9fa;">
+                            <img id="preview_imagem" src="" alt="Imagem atual do item" 
+                                style="max-width: 100%; max-height: 200px; border-radius: 4px; border: 1px solid #ccc;">
+                            <div id="info_imagem" style="margin-top: 0.5rem; font-size: 0.9rem; color: #666;">
+                                <i class="fas fa-info-circle"></i> 
+                                <span id="nome_imagem"></span>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button type="button" class="btn btn-danger btn-small" onclick="removerImagem()">
+                                    <i class="fas fa-trash"></i> Remover Imagem
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="editar_checklist_status">Status</label>
+                        <select id="editar_checklist_status" name="concluido">
+                            <option value="0">Pendente</option>
+                            <option value="1">Concluído</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editar_checklist_data_conclusao">Data de Conclusão</label>
+                        <input type="datetime-local" id="editar_checklist_data_conclusao" name="data_conclusao">
+                    </div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModal('modalEditarChecklist')">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Template para item do checklist -->
+    <template id="checklist-item-template">
+        <div class="checklist-template-item" style="border: 1px solid #ddd; padding: 1rem; margin-bottom: 1rem; border-radius: 8px;">
+            <div style="display: flex; gap: 1rem; align-items: start;">
+                <div style="flex: 1;">
+                    <div class="form-group">
+                        <label class="required">Título do Item</label>
+                        <input type="text" name="checklist_titulo[]" required 
+                            placeholder="Digite o título do item..." class="form-input"
+                            value="">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Descrição</label>
+                        <textarea name="checklist_descricao[]" 
+                                placeholder="Descreva este item do checklist..."
+                                rows="2" class="form-input"></textarea>
+                    </div>
+                </div>
+                
+                <button type="button" class="btn btn-danger" onclick="removerItemChecklist(this)" 
+                        style="align-self: start;" title="Remover item">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal para Visualizar Imagem em Tela Cheia -->
+    <div id="modalImagem" class="modal">
+        <div class="modal-content" style="max-width: 90%; max-height: 90%; background: transparent; border: none;">
+            <div class="modal-header" style="background: transparent; border: none; justify-content: flex-end;">
+                <button class="close-btn" onclick="fecharModal('modalImagem')" style="background: rgba(0,0,0,0.5); color: white;">&times;</button>
+            </div>
+            <div style="text-align: center;">
+                <img id="imagemGrande" src="" alt="Imagem em tela cheia" style="max-width: 100%; max-height: 80vh; border-radius: 8px;">
+            </div>
+        </div>
+    </div>
+
     <script src="gestao-scripts.js"></script>
     <script>
         window.usuarioId = <?php echo $usuario_id; ?>;
+        window.checklistCounter = 0;
+
+        // Função para abrir modal de gerenciamento de checklist
+        function abrirModalGerenciarChecklist(empresaId, processoId, titulo) {
+            // Preencher dados básicos
+            document.getElementById('gerenciar_empresa_id').value = empresaId;
+            document.getElementById('gerenciar_processo_id').value = processoId;
+            document.getElementById('gerenciar_processo_titulo').textContent = titulo;
+            
+            // Limpar container
+            const container = document.getElementById('checklist-container');
+            container.innerHTML = '';
+            window.checklistCounter = 0;
+            
+            // Carregar checklists existentes via AJAX
+            carregarChecklistsExistente(empresaId, processoId);
+            
+            // Abrir modal
+            document.getElementById('modalGerenciarChecklist').style.display = 'block';
+        }
+
+        // Carregar checklists existentes
+        function carregarChecklistsExistente(empresaId, processoId) {
+            console.log('Buscando checklists para empresa:', empresaId, 'processo:', processoId);
+            
+            // Fazer requisição AJAX para buscar checklists reais
+            fetch(`buscar_checklist_empresa.php?empresa_id=${empresaId}&processo_id=${processoId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Erro na resposta do servidor: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Dados recebidos:', data);
+                    
+                    const container = document.getElementById('checklist-container');
+                    container.innerHTML = '';
+                    window.checklistCounter = 0;
+                    
+                    if (data.success && data.checklists && data.checklists.length > 0) {
+                        // Adicionar cada item do checklist real
+                        data.checklists.forEach(item => {
+                            console.log('Adicionando item:', item);
+                            adicionarItemChecklist(item.titulo, item.descricao);
+                        });
+                    } else {
+                        console.log('Nenhum checklist encontrado, adicionando item vazio');
+                        // Se não houver checklists, adicionar um item vazio
+                        adicionarItemChecklist();
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar checklists:', error);
+                    // Em caso de erro, adicionar um item vazio
+                    const container = document.getElementById('checklist-container');
+                    container.innerHTML = '';
+                    window.checklistCounter = 0;
+                    adicionarItemChecklist();
+                    alert('Erro ao carregar checklists. Verifique o console para mais detalhes.');
+                });
+        }
+
+        // Adicionar novo item ao checklist - VERSÃO CORRIGIDA
+        function adicionarItemChecklist(titulo = '', descricao = '') {
+            const template = document.getElementById('checklist-item-template');
+            const clone = template.content.cloneNode(true);
+            
+            const container = document.getElementById('checklist-container');
+            const newItem = clone.querySelector('.checklist-template-item');
+            
+            // Preencher dados
+            const tituloInput = newItem.querySelector('input[name="checklist_titulo[]"]');
+            const descricaoTextarea = newItem.querySelector('textarea[name="checklist_descricao[]"]');
+            
+            tituloInput.value = titulo;
+            descricaoTextarea.value = descricao;
+            
+            container.appendChild(newItem);
+            window.checklistCounter++;
+        }
+
+        // Debug do formulário antes do envio
+document.querySelector('form').addEventListener('submit', function(e) {
+    console.log('=== DEBUG FORMULÁRIO ===');
+    const titulos = document.querySelectorAll('input[name="checklist_titulo[]"]');
+    const descricoes = document.querySelectorAll('textarea[name="checklist_descricao[]"]');
+    
+    console.log('Total de itens no formulário:', titulos.length);
+    
+    titulos.forEach((input, index) => {
+        console.log(`Item ${index + 1}:`, {
+            titulo: input.value,
+            descricao: descricoes[index] ? descricoes[index].value : 'N/A'
+        });
+    });
+});
+
+        // Remover item do checklist
+        function removerItemChecklist(button) {
+            const item = button.closest('.checklist-template-item');
+            const items = document.querySelectorAll('.checklist-template-item');
+            
+            if (items.length > 1) {
+                item.remove();
+                window.checklistCounter--;
+            } else {
+                alert('É necessário ter pelo menos um item no checklist.');
+            }
+        }
+
+        // Função para abrir modal de edição do processo para a empresa
+        function abrirModalEditarProcessoEmpresa(empresaId, processoId, titulo, dataPrevista, observacoes) {
+            document.getElementById('editar_empresa_id').value = empresaId;
+            document.getElementById('editar_processo_id').value = processoId;
+            document.getElementById('editar_processo_titulo').textContent = titulo;
+            document.getElementById('editar_empresa_data_prevista').value = dataPrevista;
+            document.getElementById('editar_empresa_observacoes').value = observacoes;
+            document.getElementById('modalEditarProcessoEmpresa').style.display = 'block';
+        }
+
+        // Função para abrir modal de edição do checklist COM IMAGEM EXISTENTE
+        function abrirModalEditarChecklist(checklistId, titulo, descricao, observacao, concluido, dataConclusao, empresaId, imagemNome = null) {
+            console.log("Abrindo modal para checklist:", checklistId, "Imagem:", imagemNome);
+            
+            document.getElementById('editar_checklist_id').value = checklistId;
+            document.getElementById('editar_empresa_id_checklist').value = empresaId;
+            document.getElementById('editar_checklist_titulo').value = titulo;
+            document.getElementById('editar_checklist_descricao').value = descricao;
+            document.getElementById('editar_checklist_observacao').value = observacao;
+            document.getElementById('editar_checklist_status').value = concluido;
+            document.getElementById('editar_remover_imagem').value = '0';
+            
+            // 🔽🔽🔽 CONFIGURAR IMAGEM EXISTENTE 🔽🔽🔽
+            if (imagemNome && imagemNome !== '') {
+                console.log("Carregando imagem existente:", imagemNome);
+                document.getElementById('editar_imagem_atual').value = imagemNome;
+                
+                // Criar URL completa para a imagem
+                const urlImagem = 'uploads/checklist-images/' + imagemNome + '?t=' + new Date().getTime();
+                document.getElementById('preview_imagem').src = urlImagem;
+                document.getElementById('preview_imagem_container').style.display = 'block';
+                atualizarInfoImagem(imagemNome); // ← ADICIONAR ESTA LINHA
+
+                // Verificar se a imagem carrega corretamente
+                document.getElementById('preview_imagem').onerror = function() {
+                    console.error("Erro ao carregar imagem:", urlImagem);
+                    document.getElementById('preview_imagem_container').style.display = 'none';
+                    document.getElementById('editar_imagem_atual').value = '';
+                };
+                
+                document.getElementById('preview_imagem').onload = function() {
+                    console.log("Imagem carregada com sucesso:", urlImagem);
+                };
+            } else {
+                console.log("Nenhuma imagem existente");
+                document.getElementById('editar_imagem_atual').value = '';
+                document.getElementById('preview_imagem_container').style.display = 'none';
+            }
+            // 🔼🔼🔼 FIM CONFIGURAÇÃO IMAGEM 🔼🔼🔼
+            
+            // Formatar data para o input datetime-local
+            if (dataConclusao) {
+                const data = new Date(dataConclusao);
+                const formattedDate = data.toISOString().slice(0, 16);
+                document.getElementById('editar_checklist_data_conclusao').value = formattedDate;
+            } else {
+                document.getElementById('editar_checklist_data_conclusao').value = '';
+            }
+            
+            // Preview de nova imagem selecionada
+            const inputImagem = document.getElementById('editar_checklist_imagem');
+            inputImagem.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        document.getElementById('preview_imagem').src = e.target.result;
+                        document.getElementById('preview_imagem_container').style.display = 'block';
+                        document.getElementById('editar_remover_imagem').value = '0'; // Não remover se adicionou nova
+                    }
+                    reader.readAsDataURL(file);
+                }
+            };
+            
+            document.getElementById('modalEditarChecklist').style.display = 'block';
+        }
+
+        // Função para remover imagem
+        function removerImagem() {
+            console.log("Removendo imagem do item");
+            document.getElementById('editar_checklist_imagem').value = '';
+            document.getElementById('editar_imagem_atual').value = '';
+            document.getElementById('preview_imagem').src = '';
+            document.getElementById('preview_imagem_container').style.display = 'none';
+            document.getElementById('editar_remover_imagem').value = '1'; // Marcar para remover
+        }
+
+        // Modal para visualizar imagem em tela cheia
+        function abrirModalImagem(imagemNome) {
+            document.getElementById('imagemGrande').src = 'uploads/checklist-images/' + imagemNome;
+            document.getElementById('modalImagem').style.display = 'block';
+        }
+
+        // Função para fechar modal
+        function fecharModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Event listeners para modais
+        window.onclick = function(event) {
+            const modals = ['modalGerenciarChecklist', 'modalEditarProcessoEmpresa', 'modalEditarChecklist'];
+            modals.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                fecharModal('modalGerenciarChecklist');
+                fecharModal('modalEditarProcessoEmpresa');
+                fecharModal('modalEditarChecklist');
+            }
+        });
+
+        // Função para marcar/desmarcar checklist (exemplo)
+        function marcarChecklist(checklistId, concluido, empresaId) {
+            console.log('Marcando checklist:', checklistId, concluido, empresaId);
+            // Implementar lógica AJAX para atualizar o checklist
+        }
+
+
+        // Debug function para verificar dados recebidos
+        function debugChecklists(data) {
+            console.log('=== DEBUG CHECKLISTS ===');
+            console.log('Success:', data.success);
+            console.log('Checklists count:', data.checklists ? data.checklists.length : 0);
+            if (data.checklists) {
+                data.checklists.forEach((item, index) => {
+                    console.log(`Item ${index}:`, item);
+                });
+            }
+            console.log('=== FIM DEBUG ===');
+        }
+
+        // Modifique a função carregarChecklistsExistente para incluir debug
+        function carregarChecklistsExistente(empresaId, processoId) {
+            console.log('Buscando checklists para empresa:', empresaId, 'processo:', processoId);
+            
+            fetch(`buscar_checklist_empresa.php?empresa_id=${empresaId}&processo_id=${processoId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Erro na resposta do servidor: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    debugChecklists(data); // Adicionar debug aqui
+                    
+                    const container = document.getElementById('checklist-container');
+                    container.innerHTML = '';
+                    window.checklistCounter = 0;
+                    
+                    if (data.success && data.checklists && data.checklists.length > 0) {
+                        data.checklists.forEach(item => {
+                            console.log('Adicionando item:', item);
+                            adicionarItemChecklist(item.titulo, item.descricao);
+                        });
+                    } else {
+                        console.log('Nenhum checklist encontrado, adicionando item vazio');
+                        adicionarItemChecklist();
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar checklists:', error);
+                    const container = document.getElementById('checklist-container');
+                    container.innerHTML = '';
+                    window.checklistCounter = 0;
+                    adicionarItemChecklist();
+                });
+        }
+
+
+        // Debug do formulário antes do envio
+        document.querySelector('form').addEventListener('submit', function(e) {
+            console.log('=== DEBUG FINAL DO FORMULÁRIO ===');
+            const titulos = document.querySelectorAll('input[name="checklist_titulo[]"]');
+            const descricoes = document.querySelectorAll('textarea[name="checklist_descricao[]"]');
+            
+            console.log('Total de itens no formulário:', titulos.length);
+            
+            titulos.forEach((input, index) => {
+                console.log(`Item ${index + 1}:`, {
+                    titulo: input.value,
+                    descricao: descricoes[index] ? descricoes[index].value : 'N/A'
+                });
+            });
+            
+            // Não prevenir submit - deixar enviar
+        });
+
+        // Função para abrir imagem em tela cheia
+        function abrirModalImagem(imagemNome) {
+            document.getElementById('imagemGrande').src = 'uploads/checklist-images/' + imagemNome;
+            document.getElementById('modalImagem').style.display = 'block';
+        }
+
+        // Fechar modal com ESC
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                fecharModal('modalImagem');
+            }
+        });
+
+
+        // Função para atualizar informações da imagem
+        function atualizarInfoImagem(nomeImagem) {
+            const infoImagem = document.getElementById('info_imagem');
+            const nomeSpan = document.getElementById('nome_imagem');
+            
+            if (nomeImagem) {
+                nomeSpan.textContent = nomeImagem;
+                infoImagem.style.display = 'block';
+            } else {
+                infoImagem.style.display = 'none';
+            }
+        }
+
+
+        // Função para aplicar filtro
+        function aplicarFiltro(status) {
+            const url = new URL(window.location.href);
+            if (status === 'todos') {
+                url.searchParams.delete('status');
+            } else {
+                url.searchParams.set('status', status);
+            }
+            window.location.href = url.toString();
+        }
+
+        function getProcessoStatus($processo_id, $empresa_id) {
+            global $conexao;
+            
+            $sql = "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as concluidos
+                FROM gestao_processo_checklist 
+                WHERE processo_id = ? AND empresa_id = ?";
+            
+            $stmt = $conexao->prepare($sql);
+            $stmt->bind_param("ii", $processo_id, $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            
+            $total = $result['total'] ?? 0;
+            $concluidos = $result['concluidos'] ?? 0;
+            
+            if ($total == 0) return 'pendente';
+            if ($concluidos == $total) return 'concluido';
+            if ($concluidos > 0) return 'em_andamento';
+            return 'pendente';
+        }
     </script>
 </body>
 </html>

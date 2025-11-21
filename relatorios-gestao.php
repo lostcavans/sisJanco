@@ -8,77 +8,224 @@ if (!verificarAutenticacaoGestao()) {
     exit;
 }
 
-$empresa_id = $_SESSION['empresa_id_gestao'];
+$usuario_id = $_SESSION['usuario_id_gestao'];
+$nivel_usuario = $_SESSION['usuario_nivel_gestao'];
 
-// Buscar estatísticas para os cards
-$sql_total = "SELECT COUNT(*) as total FROM gestao_processos WHERE empresa_id = ? AND ativo = 1";
-$stmt = $conexao->prepare($sql_total);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$total_processos = $stmt->get_result()->fetch_assoc()['total'];
-$stmt->close();
+// Buscar estatísticas gerais
+if (temPermissaoGestao('analista')) {
+    // Analistas veem tudo
+    $sql_total_processos = "SELECT COUNT(*) as total FROM gestao_processos WHERE ativo = 1";
+    $sql_processos_status = "SELECT status, COUNT(*) as total FROM gestao_processos WHERE ativo = 1 GROUP BY status";
+    $sql_empresas = "SELECT COUNT(*) as total FROM empresas WHERE ativo = 1";
+    $sql_usuarios = "SELECT COUNT(*) as total FROM gestao_usuarios WHERE ativo = 1";
+    $sql_documentos = "SELECT COUNT(*) as total FROM gestao_documentacoes_empresa";
+    $sql_nfe = "SELECT COUNT(*) as total FROM nfe WHERE status = 'processada'";
+} else {
+    // Auxiliares veem apenas seus processos
+    $sql_total_processos = "SELECT COUNT(*) as total FROM gestao_processos WHERE ativo = 1 AND responsavel_id = ?";
+    $sql_processos_status = "SELECT status, COUNT(*) as total FROM gestao_processos WHERE ativo = 1 AND responsavel_id = ? GROUP BY status";
+    $sql_empresas = "SELECT COUNT(DISTINCT empresa_id) as total FROM gestao_processos WHERE ativo = 1 AND responsavel_id = ?";
+    $sql_usuarios = "SELECT COUNT(*) as total FROM gestao_usuarios WHERE ativo = 1 AND id = ?";
+    $sql_documentos = "SELECT COUNT(*) as total FROM gestao_documentacoes_empresa WHERE usuario_recebimento_id = ?";
+    $sql_nfe = "SELECT COUNT(*) as total FROM nfe WHERE usuario_id = ? AND status = 'processada'";
+}
 
-$sql_ativos = "SELECT COUNT(*) as total FROM gestao_processos 
-               WHERE empresa_id = ? AND status IN ('em_andamento', 'pendente') AND ativo = 1";
-$stmt = $conexao->prepare($sql_ativos);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$processos_ativos = $stmt->get_result()->fetch_assoc()['total'];
-$stmt->close();
+// Executar consultas
+$total_processos = executarConsulta($sql_total_processos, $usuario_id);
+$processos_status = executarConsultaArray($sql_processos_status, $usuario_id);
+$total_empresas = executarConsulta($sql_empresas, $usuario_id);
+$total_usuarios = executarConsulta($sql_usuarios, $usuario_id);
+$total_documentos = executarConsulta($sql_documentos, $usuario_id);
+$total_nfe = executarConsulta($sql_nfe, $usuario_id);
 
-$sql_responsaveis = "SELECT COUNT(DISTINCT responsavel_id) as total FROM gestao_processos 
-                     WHERE empresa_id = ? AND ativo = 1";
-$stmt = $conexao->prepare($sql_responsaveis);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$total_responsaveis = $stmt->get_result()->fetch_assoc()['total'];
-$stmt->close();
+// Buscar processos por categoria
+if (temPermissaoGestao('analista')) {
+    $sql_categorias = "SELECT c.nome, c.cor, COUNT(p.id) as total 
+                      FROM gestao_categorias_processo c 
+                      LEFT JOIN gestao_processos p ON c.id = p.categoria_id AND p.ativo = 1 
+                      WHERE c.ativo = 1 
+                      GROUP BY c.id, c.nome, c.cor 
+                      ORDER BY total DESC";
+} else {
+    $sql_categorias = "SELECT c.nome, c.cor, COUNT(p.id) as total 
+                      FROM gestao_categorias_processo c 
+                      LEFT JOIN gestao_processos p ON c.id = p.categoria_id AND p.ativo = 1 AND p.responsavel_id = ?
+                      WHERE c.ativo = 1 
+                      GROUP BY c.id, c.nome, c.cor 
+                      ORDER BY total DESC";
+}
+$categorias = executarConsultaArray($sql_categorias, $usuario_id);
 
-$sql_pendentes = "SELECT COUNT(*) as total FROM gestao_processos 
-                  WHERE empresa_id = ? AND status = 'pendente' AND ativo = 1";
-$stmt = $conexao->prepare($sql_pendentes);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$processos_pendentes = $stmt->get_result()->fetch_assoc()['total'];
-$stmt->close();
+// Buscar processos por prioridade
+if (temPermissaoGestao('analista')) {
+    $sql_prioridades = "SELECT prioridade, COUNT(*) as total 
+                       FROM gestao_processos 
+                       WHERE ativo = 1 
+                       GROUP BY prioridade 
+                       ORDER BY FIELD(prioridade, 'urgente', 'alta', 'media', 'baixa')";
+} else {
+    $sql_prioridades = "SELECT prioridade, COUNT(*) as total 
+                       FROM gestao_processos 
+                       WHERE ativo = 1 AND responsavel_id = ? 
+                       GROUP BY prioridade 
+                       ORDER BY FIELD(prioridade, 'urgente', 'alta', 'media', 'baida')";
+}
+$prioridades = executarConsultaArray($sql_prioridades, $usuario_id);
 
-// Buscar dados para gráficos
-$sql_status = "SELECT status, COUNT(*) as total 
-               FROM gestao_processos 
-               WHERE empresa_id = ? AND ativo = 1 
-               GROUP BY status";
-$stmt = $conexao->prepare($sql_status);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$dados_status = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+// Buscar processos recorrentes
+if (temPermissaoGestao('analista')) {
+    $sql_recorrentes = "SELECT recorrente, COUNT(*) as total 
+                       FROM gestao_processos 
+                       WHERE ativo = 1 AND recorrente != 'nao' 
+                       GROUP BY recorrente 
+                       ORDER BY total DESC";
+} else {
+    $sql_recorrentes = "SELECT recorrente, COUNT(*) as total 
+                       FROM gestao_processos 
+                       WHERE ativo = 1 AND recorrente != 'nao' AND responsavel_id = ? 
+                       GROUP BY recorrente 
+                       ORDER BY total DESC";
+}
+$recorrentes = executarConsultaArray($sql_recorrentes, $usuario_id);
 
-$sql_responsaveis_detalhes = "SELECT u.nome_completo, COUNT(p.id) as total 
-                              FROM gestao_processos p 
-                              JOIN gestao_usuarios u ON p.responsavel_id = u.id 
-                              WHERE p.empresa_id = ? AND p.ativo = 1 
-                              GROUP BY u.nome_completo 
-                              ORDER BY total DESC LIMIT 5";
-$stmt = $conexao->prepare($sql_responsaveis_detalhes);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$dados_responsaveis = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+// Buscar top responsáveis
+if (temPermissaoGestao('analista')) {
+    $sql_responsaveis = "SELECT u.nome_completo, COUNT(p.id) as total 
+                        FROM gestao_usuarios u 
+                        LEFT JOIN gestao_processos p ON u.id = p.responsavel_id AND p.ativo = 1 
+                        WHERE u.ativo = 1 
+                        GROUP BY u.id, u.nome_completo 
+                        ORDER BY total DESC 
+                        LIMIT 5";
+} else {
+    $sql_responsaveis = "SELECT u.nome_completo, COUNT(p.id) as total 
+                        FROM gestao_usuarios u 
+                        LEFT JOIN gestao_processos p ON u.id = p.responsavel_id AND p.ativo = 1 AND p.responsavel_id = ?
+                        WHERE u.ativo = 1 AND u.id = ?
+                        GROUP BY u.id, u.nome_completo 
+                        ORDER BY total DESC 
+                        LIMIT 5";
+}
+$top_responsaveis = executarConsultaArray($sql_responsaveis, $usuario_id);
 
-// Buscar atividade recente
-$sql_atividade = "SELECT h.*, u.nome_completo, p.titulo as processo_titulo 
-                  FROM gestao_historicos_processo h 
-                  JOIN gestao_usuarios u ON h.usuario_id = u.id 
-                  JOIN gestao_processos p ON h.processo_id = p.id 
-                  WHERE p.empresa_id = ? 
-                  ORDER BY h.created_at DESC 
-                  LIMIT 5";
-$stmt = $conexao->prepare($sql_atividade);
-$stmt->bind_param("i", $empresa_id);
-$stmt->execute();
-$atividades = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+// Buscar estatísticas de documentos
+if (temPermissaoGestao('analista')) {
+    $sql_docs_status = "SELECT status, COUNT(*) as total 
+                       FROM gestao_documentacoes_empresa 
+                       GROUP BY status";
+} else {
+    $sql_docs_status = "SELECT status, COUNT(*) as total 
+                       FROM gestao_documentacoes_empresa 
+                       WHERE usuario_recebimento_id = ? 
+                       GROUP BY status";
+}
+$documentos_status = executarConsultaArray($sql_docs_status, $usuario_id);
+
+// Buscar estatísticas de NFes
+if (temPermissaoGestao('analista')) {
+    $sql_nfe_mes = "SELECT COUNT(*) as total, competencia_mes, competencia_ano 
+                   FROM nfe 
+                   GROUP BY competencia_ano, competencia_mes 
+                   ORDER BY competencia_ano DESC, competencia_mes DESC 
+                   LIMIT 6";
+} else {
+    $sql_nfe_mes = "SELECT COUNT(*) as total, competencia_mes, competencia_ano 
+                   FROM nfe 
+                   WHERE usuario_id = ? 
+                   GROUP BY competencia_ano, competencia_mes 
+                   ORDER BY competencia_ano DESC, competencia_mes DESC 
+                   LIMIT 6";
+}
+$nfe_por_mes = executarConsultaArray($sql_nfe_mes, $usuario_id);
+
+// Buscar processos próximos do vencimento
+if (temPermissaoGestao('analista')) {
+    $sql_vencimentos = "SELECT p.titulo, p.data_prevista, u.nome_completo as responsavel, 
+                       DATEDIFF(p.data_prevista, CURDATE()) as dias_restantes 
+                       FROM gestao_processos p 
+                       LEFT JOIN gestao_usuarios u ON p.responsavel_id = u.id 
+                       WHERE p.ativo = 1 AND p.status NOT IN ('concluido', 'cancelado') 
+                       AND p.data_prevista IS NOT NULL 
+                       AND p.data_prevista >= CURDATE() 
+                       ORDER BY p.data_prevista ASC 
+                       LIMIT 5";
+} else {
+    $sql_vencimentos = "SELECT p.titulo, p.data_prevista, u.nome_completo as responsavel, 
+                       DATEDIFF(p.data_prevista, CURDATE()) as dias_restantes 
+                       FROM gestao_processos p 
+                       LEFT JOIN gestao_usuarios u ON p.responsavel_id = u.id 
+                       WHERE p.ativo = 1 AND p.status NOT IN ('concluido', 'cancelado') 
+                       AND p.data_prevista IS NOT NULL 
+                       AND p.data_prevista >= CURDATE() 
+                       AND p.responsavel_id = ? 
+                       ORDER BY p.data_prevista ASC 
+                       LIMIT 5";
+}
+$proximos_vencimentos = executarConsultaArray($sql_vencimentos, $usuario_id);
+
+// Funções auxiliares para executar consultas
+function executarConsulta($sql, $usuario_id = null) {
+    global $conexao;
+    $stmt = $conexao->prepare($sql);
+    if ($usuario_id && strpos($sql, '?') !== false) {
+        $stmt->bind_param("i", $usuario_id);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $result['total'] ?? 0;
+}
+
+function executarConsultaArray($sql, $usuario_id = null) {
+    global $conexao;
+    $stmt = $conexao->prepare($sql);
+    if ($usuario_id && strpos($sql, '?') !== false) {
+        $stmt->bind_param("i", $usuario_id);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $result;
+}
+
+// Preparar dados para gráficos
+$dados_status = [];
+$status_labels = [
+    'rascunho' => 'Rascunho',
+    'pendente' => 'Pendente', 
+    'em_andamento' => 'Em Andamento',
+    'concluido' => 'Concluído',
+    'cancelado' => 'Cancelado',
+    'pausado' => 'Pausado'
+];
+
+foreach ($processos_status as $status) {
+    $dados_status[] = [
+        'status' => $status_labels[$status['status']] ?? $status['status'],
+        'total' => $status['total']
+    ];
+}
+
+// Calcular totais para cards
+$processos_concluidos = 0;
+$processos_andamento = 0;
+$processos_pendentes = 0;
+
+foreach ($processos_status as $status) {
+    switch ($status['status']) {
+        case 'concluido':
+            $processos_concluidos = $status['total'];
+            break;
+        case 'em_andamento':
+            $processos_andamento = $status['total'];
+            break;
+        case 'pendente':
+            $processos_pendentes = $status['total'];
+            break;
+    }
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -111,8 +258,7 @@ $stmt->close();
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            background: #f5f7fa;
             color: var(--dark);
             line-height: 1.6;
         }
@@ -158,30 +304,30 @@ $stmt->close();
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 0 2rem;
         }
 
         .page-header {
             margin-bottom: 2rem;
-            color: var(--white);
         }
 
         .page-title {
             font-size: 2.5rem;
             font-weight: 700;
+            color: var(--dark);
             margin-bottom: 0.5rem;
         }
 
         .page-subtitle {
             font-size: 1.1rem;
-            opacity: 0.9;
+            color: var(--gray);
         }
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -199,14 +345,18 @@ $stmt->close();
         }
 
         .stat-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-3px);
             box-shadow: var(--shadow-lg);
         }
 
-        .stat-card.blue { border-left-color: #3b82f6; }
-        .stat-card.green { border-left-color: #10b981; }
-        .stat-card.purple { border-left-color: #8b5cf6; }
-        .stat-card.yellow { border-left-color: #f59e0b; }
+        .stat-card.processos { border-left-color: #4361ee; }
+        .stat-card.empresas { border-left-color: #7209b7; }
+        .stat-card.usuarios { border-left-color: #2ec4b6; }
+        .stat-card.documentos { border-left-color: #ff9f1c; }
+        .stat-card.nfe { border-left-color: #e63946; }
+        .stat-card.concluidos { border-left-color: #10b981; }
+        .stat-card.andamento { border-left-color: #3b82f6; }
+        .stat-card.pendentes { border-left-color: #f59e0b; }
 
         .stat-info h3 {
             font-size: 0.9rem;
@@ -225,10 +375,14 @@ $stmt->close();
             opacity: 0.7;
         }
 
-        .stat-card.blue .stat-icon { color: #3b82f6; }
-        .stat-card.green .stat-icon { color: #10b981; }
-        .stat-card.purple .stat-icon { color: #8b5cf6; }
-        .stat-card.yellow .stat-icon { color: #f59e0b; }
+        .stat-card.processos .stat-icon { color: #4361ee; }
+        .stat-card.empresas .stat-icon { color: #7209b7; }
+        .stat-card.usuarios .stat-icon { color: #2ec4b6; }
+        .stat-card.documentos .stat-icon { color: #ff9f1c; }
+        .stat-card.nfe .stat-icon { color: #e63946; }
+        .stat-card.concluidos .stat-icon { color: #10b981; }
+        .stat-card.andamento .stat-icon { color: #3b82f6; }
+        .stat-card.pendentes .stat-icon { color: #f59e0b; }
 
         .charts-grid {
             display: grid;
@@ -249,81 +403,102 @@ $stmt->close();
             font-weight: 600;
             margin-bottom: 1rem;
             color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .chart-container {
-            height: 250px;
+            height: 300px;
             position: relative;
         }
 
-        .activity-card {
+        .info-card {
             background: var(--white);
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
             overflow: hidden;
+            margin-bottom: 1.5rem;
         }
 
-        .activity-header {
+        .info-header {
             padding: 1.5rem;
             border-bottom: 1px solid var(--gray-light);
+            background: #f8f9fa;
         }
 
-        .activity-title {
+        .info-title {
             font-size: 1.2rem;
             font-weight: 600;
             color: var(--dark);
-        }
-
-        .activity-item {
             display: flex;
             align-items: center;
-            padding: 1rem 1.5rem;
+            gap: 0.5rem;
+        }
+
+        .info-body {
+            padding: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            padding: 0.75rem 0;
             border-bottom: 1px solid var(--gray-light);
         }
 
-        .activity-item:last-child {
+        .info-item:last-child {
             border-bottom: none;
         }
 
-        .activity-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 1rem;
-            font-size: 1rem;
-        }
-
-        .activity-icon.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-        .activity-icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-        .activity-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-        .activity-icon.orange { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-
-        .activity-content {
+        .info-label {
             flex: 1;
-        }
-
-        .activity-title-small {
-            font-weight: 600;
             color: var(--dark);
-            margin-bottom: 0.25rem;
         }
 
-        .activity-description {
-            font-size: 0.9rem;
+        .info-value {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+        .badge-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+        .badge-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .badge-info { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+
+        .grid-2-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
             color: var(--gray);
         }
 
-        .activity-time {
-            font-size: 0.8rem;
-            color: var(--gray);
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
         }
 
-        /* Responsividade */
         @media (max-width: 768px) {
             .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .grid-2-col {
                 grid-template-columns: 1fr;
             }
             
@@ -334,6 +509,10 @@ $stmt->close();
             
             .page-title {
                 font-size: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -347,9 +526,9 @@ $stmt->close();
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="gestao-empresas.php" class="nav-link">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link">Empresas</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
-            <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
+            <li><a href="relatorios-gestao.php" class="nav-link active">Relatórios</a></li>
             <li><a href="logout-gestao.php" class="nav-link">Sair</a></li>
         </ul>
     </nav>
@@ -357,42 +536,86 @@ $stmt->close();
     <main class="container">
         <div class="page-header">
             <h1 class="page-title">Relatórios e Estatísticas</h1>
-            <p class="page-subtitle">Acompanhe métricas e desempenho dos processos</p>
+            <p class="page-subtitle">
+                <i class="fas fa-chart-bar"></i>
+                Visão completa do sistema - 
+                <?php echo temPermissaoGestao('analista') ? 'Todos os dados' : 'Seus dados'; ?>
+            </p>
         </div>
 
-        <!-- Cards de Estatísticas -->
+        <!-- Cards de Estatísticas Principais -->
         <div class="stats-grid">
-            <div class="stat-card blue">
+            <div class="stat-card processos">
                 <div class="stat-info">
                     <h3>Total de Processos</h3>
                     <div class="number"><?php echo $total_processos; ?></div>
                 </div>
                 <div class="stat-icon">
-                    <i class="fas fa-list"></i>
+                    <i class="fas fa-tasks"></i>
                 </div>
             </div>
             
-            <div class="stat-card green">
+            <div class="stat-card empresas">
                 <div class="stat-info">
-                    <h3>Processos Ativos</h3>
-                    <div class="number"><?php echo $processos_ativos; ?></div>
+                    <h3>Empresas</h3>
+                    <div class="number"><?php echo $total_empresas; ?></div>
                 </div>
                 <div class="stat-icon">
-                    <i class="fas fa-check-circle"></i>
+                    <i class="fas fa-building"></i>
                 </div>
             </div>
             
-            <div class="stat-card purple">
+            <div class="stat-card usuarios">
                 <div class="stat-info">
-                    <h3>Total de Responsáveis</h3>
-                    <div class="number"><?php echo $total_responsaveis; ?></div>
+                    <h3>Usuários</h3>
+                    <div class="number"><?php echo $total_usuarios; ?></div>
                 </div>
                 <div class="stat-icon">
                     <i class="fas fa-users"></i>
                 </div>
             </div>
             
-            <div class="stat-card yellow">
+            <div class="stat-card documentos">
+                <div class="stat-info">
+                    <h3>Documentos</h3>
+                    <div class="number"><?php echo $total_documentos; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+            </div>
+
+            <div class="stat-card nfe">
+                <div class="stat-info">
+                    <h3>NFes Processadas</h3>
+                    <div class="number"><?php echo $total_nfe; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-receipt"></i>
+                </div>
+            </div>
+
+            <div class="stat-card concluidos">
+                <div class="stat-info">
+                    <h3>Processos Concluídos</h3>
+                    <div class="number"><?php echo $processos_concluidos; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+            </div>
+
+            <div class="stat-card andamento">
+                <div class="stat-info">
+                    <h3>Em Andamento</h3>
+                    <div class="number"><?php echo $processos_andamento; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-sync-alt"></i>
+                </div>
+            </div>
+
+            <div class="stat-card pendentes">
                 <div class="stat-info">
                     <h3>Processos Pendentes</h3>
                     <div class="number"><?php echo $processos_pendentes; ?></div>
@@ -403,102 +626,193 @@ $stmt->close();
             </div>
         </div>
 
-        <!-- Gráficos -->
-        <div class="charts-grid">
+        <!-- Gráficos e Estatísticas Detalhadas -->
+        <div class="grid-2-col">
+            <!-- Gráfico de Status -->
             <div class="chart-card">
-                <h3 class="chart-title">Status dos Processos</h3>
+                <h3 class="chart-title">
+                    <i class="fas fa-chart-pie"></i>
+                    Status dos Processos
+                </h3>
                 <div class="chart-container">
                     <canvas id="statusChart"></canvas>
                 </div>
             </div>
-            
+
+            <!-- Gráfico de Categorias -->
             <div class="chart-card">
-                <h3 class="chart-title">Processos por Responsável</h3>
+                <h3 class="chart-title">
+                    <i class="fas fa-layer-group"></i>
+                    Processos por Categoria
+                </h3>
                 <div class="chart-container">
-                    <canvas id="responsibleChart"></canvas>
+                    <canvas id="categoriasChart"></canvas>
                 </div>
             </div>
         </div>
 
-        <!-- Atividade Recente -->
-        <div class="activity-card">
-            <div class="activity-header">
-                <h3 class="activity-title">Atividade Recente</h3>
-            </div>
-            <div class="activity-body">
-                <?php if (count($atividades) > 0): ?>
-                    <?php foreach ($atividades as $atividade): ?>
-                        <div class="activity-item">
-                            <div class="activity-icon 
-                                <?php 
-                                switch($atividade['acao']) {
-                                    case 'criacao': echo 'green'; break;
-                                    case 'atualizacao': echo 'blue'; break;
-                                    case 'conclusao': echo 'purple'; break;
-                                    default: echo 'orange';
-                                }
-                                ?>">
-                                <i class="fas 
-                                    <?php 
-                                    switch($atividade['acao']) {
-                                        case 'criacao': echo 'fa-plus'; break;
-                                        case 'atualizacao': echo 'fa-edit'; break;
-                                        case 'conclusao': echo 'fa-check'; break;
-                                        default: echo 'fa-info-circle';
-                                    }
-                                    ?>"></i>
+        <div class="grid-2-col">
+            <!-- Top Responsáveis -->
+            <div class="info-card">
+                <div class="info-header">
+                    <h3 class="info-title">
+                        <i class="fas fa-user-tie"></i>
+                        Top Responsáveis
+                    </h3>
+                </div>
+                <div class="info-body">
+                    <?php if (count($top_responsaveis) > 0): ?>
+                        <?php foreach ($top_responsaveis as $responsavel): ?>
+                            <div class="info-item">
+                                <span class="info-label"><?php echo htmlspecialchars($responsavel['nome_completo']); ?></span>
+                                <span class="info-value"><?php echo $responsavel['total']; ?> processos</span>
                             </div>
-                            <div class="activity-content">
-                                <div class="activity-title-small"><?php echo htmlspecialchars($atividade['processo_titulo']); ?></div>
-                                <div class="activity-description">
-                                    <?php echo htmlspecialchars($atividade['nome_completo']); ?> - 
-                                    <?php 
-                                    $acoes = [
-                                        'criacao' => 'criou o processo',
-                                        'atualizacao' => 'atualizou o processo',
-                                        'conclusao' => 'concluiu o processo'
-                                    ];
-                                    echo $acoes[$atividade['acao']] ?? $atividade['acao'];
-                                    ?>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="fas fa-users"></i>
+                            <p>Nenhum responsável encontrado</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Próximos Vencimentos -->
+            <div class="info-card">
+                <div class="info-header">
+                    <h3 class="info-title">
+                        <i class="fas fa-calendar-day"></i>
+                        Próximos Vencimentos
+                    </h3>
+                </div>
+                <div class="info-body">
+                    <?php if (count($proximos_vencimentos) > 0): ?>
+                        <?php foreach ($proximos_vencimentos as $vencimento): ?>
+                            <div class="info-item">
+                                <div>
+                                    <div class="info-label"><?php echo htmlspecialchars($vencimento['titulo']); ?></div>
+                                    <small style="color: var(--gray);">
+                                        <?php echo date('d/m/Y', strtotime($vencimento['data_prevista'])); ?> - 
+                                        <?php echo htmlspecialchars($vencimento['responsavel']); ?>
+                                    </small>
+                                </div>
+                                <span class="badge <?php echo $vencimento['dias_restantes'] <= 3 ? 'badge-danger' : ($vencimento['dias_restantes'] <= 7 ? 'badge-warning' : 'badge-info'); ?>">
+                                    <?php echo $vencimento['dias_restantes']; ?> dias
+                                </span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="fas fa-calendar-check"></i>
+                            <p>Nenhum vencimento próximo</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-2-col">
+            <!-- Processos por Prioridade -->
+            <div class="info-card">
+                <div class="info-header">
+                    <h3 class="info-title">
+                        <i class="fas fa-flag"></i>
+                        Processos por Prioridade
+                    </h3>
+                </div>
+                <div class="info-body">
+                    <?php if (count($prioridades) > 0): ?>
+                        <?php foreach ($prioridades as $prioridade): ?>
+                            <div class="info-item">
+                                <span class="info-label" style="text-transform: capitalize;">
+                                    <?php echo htmlspecialchars($prioridade['prioridade']); ?>
+                                </span>
+                                <span class="info-value"><?php echo $prioridade['total']; ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="fas fa-flag"></i>
+                            <p>Nenhum processo encontrado</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Processos Recorrentes -->
+            <div class="info-card">
+                <div class="info-header">
+                    <h3 class="info-title">
+                        <i class="fas fa-sync-alt"></i>
+                        Processos Recorrentes
+                    </h3>
+                </div>
+                <div class="info-body">
+                    <?php if (count($recorrentes) > 0): ?>
+                        <?php foreach ($recorrentes as $recorrente): ?>
+                            <div class="info-item">
+                                <span class="info-label" style="text-transform: capitalize;">
+                                    <?php echo htmlspecialchars($recorrente['recorrente']); ?>
+                                </span>
+                                <span class="info-value"><?php echo $recorrente['total']; ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="fas fa-sync-alt"></i>
+                            <p>Nenhum processo recorrente</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estatísticas de Documentos -->
+        <div class="info-card">
+            <div class="info-header">
+                <h3 class="info-title">
+                    <i class="fas fa-file-contract"></i>
+                    Status de Documentações
+                </h3>
+            </div>
+            <div class="info-body">
+                <?php if (count($documentos_status) > 0): ?>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                        <?php foreach ($documentos_status as $doc_status): ?>
+                            <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">
+                                    <?php echo $doc_status['total']; ?>
+                                </div>
+                                <div style="color: var(--gray); text-transform: capitalize;">
+                                    <?php echo htmlspecialchars($doc_status['status']); ?>
                                 </div>
                             </div>
-                            <div class="activity-time">
-                                <?php echo date('d/m/Y H:i', strtotime($atividade['created_at'])); ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    </div>
                 <?php else: ?>
-                    <div class="activity-item" style="justify-content: center; padding: 2rem;">
-                        <i class="fas fa-inbox" style="font-size: 2rem; color: var(--gray); margin-right: 1rem;"></i>
-                        <div style="color: var(--gray);">Nenhuma atividade recente</div>
+                    <div class="empty-state">
+                        <i class="fas fa-file-alt"></i>
+                        <p>Nenhuma documentação encontrada</p>
                     </div>
                 <?php endif; ?>
             </div>
         </div>
+
     </main>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Dados dos gráficos
             const statusData = <?php echo json_encode($dados_status); ?>;
-            const responsaveisData = <?php echo json_encode($dados_responsaveis); ?>;
+            const categoriasData = <?php echo json_encode($categorias); ?>;
+            const prioridadesData = <?php echo json_encode($prioridades); ?>;
 
             // Gráfico de Status
             const statusCtx = document.getElementById('statusChart').getContext('2d');
             const statusChart = new Chart(statusCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: statusData.map(item => {
-                        const labels = {
-                            'rascunho': 'Rascunho',
-                            'pendente': 'Pendente',
-                            'em_andamento': 'Em Andamento',
-                            'concluido': 'Concluído',
-                            'cancelado': 'Cancelado',
-                            'pausado': 'Pausado'
-                        };
-                        return labels[item.status] || item.status;
-                    }),
+                    labels: statusData.map(item => item.status),
                     datasets: [{
                         data: statusData.map(item => item.total),
                         backgroundColor: [
@@ -524,17 +838,17 @@ $stmt->close();
                 }
             });
 
-            // Gráfico de Responsáveis
-            const responsibleCtx = document.getElementById('responsibleChart').getContext('2d');
-            const responsibleChart = new Chart(responsibleCtx, {
+            // Gráfico de Categorias
+            const categoriasCtx = document.getElementById('categoriasChart').getContext('2d');
+            const categoriasChart = new Chart(categoriasCtx, {
                 type: 'bar',
                 data: {
-                    labels: responsaveisData.map(item => item.nome_completo),
+                    labels: categoriasData.map(item => item.nome),
                     datasets: [{
-                        label: 'Processos por Responsável',
-                        data: responsaveisData.map(item => item.total),
-                        backgroundColor: '#3B82F6',
-                        borderColor: '#2563EB',
+                        label: 'Processos por Categoria',
+                        data: categoriasData.map(item => item.total),
+                        backgroundColor: categoriasData.map(item => item.cor || '#4361ee'),
+                        borderColor: categoriasData.map(item => item.cor || '#4361ee'),
                         borderWidth: 1
                     }]
                 },

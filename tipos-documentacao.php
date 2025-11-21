@@ -504,7 +504,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['excluir_tipo'])) {
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="gestao-empresas.php" class="nav-link">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link">Empresas</a></li>
             <li><a href="tipos-documentacao.php" class="nav-link active">Tipos de Doc.</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>

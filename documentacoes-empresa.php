@@ -776,7 +776,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marcar_recebido'])) {
         <ul class="navbar-nav">
             <li><a href="dashboard-gestao.php" class="nav-link">Dashboard</a></li>
             <li><a href="processos-gestao.php" class="nav-link">Processos</a></li>
-            <li><a href="gestao-empresas.php" class="nav-link active">Documentações</a></li>
+            <li><a href="gestao-empresas.php" class="nav-link active">Empresas</a></li>
             <li><a href="responsaveis-gestao.php" class="nav-link">Responsáveis</a></li>
             <li><a href="relatorios-gestao.php" class="nav-link">Relatórios</a></li>
             <li><a href="logout-gestao.php" class="nav-link">Sair</a></li>

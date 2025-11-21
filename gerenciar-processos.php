@@ -56,7 +56,8 @@ $processos_disponiveis = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 // Buscar processos já associados à empresa
-$sql_processos_associados = "SELECT p.*, pe.id as associacao_id, c.nome as categoria_nome
+$sql_processos_associados = "SELECT p.*, pe.id as associacao_id, pe.data_prevista, pe.observacoes, 
+                             c.nome as categoria_nome
                              FROM gestao_processos p
                              INNER JOIN gestao_processo_empresas pe ON p.id = pe.processo_id
                              LEFT JOIN gestao_categorias_processo c ON p.categoria_id = c.id
@@ -71,7 +72,6 @@ $stmt->close();
 // Processar associação de processo
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['associar_processo'])) {
     $processo_id = intval($_POST['processo_id']);
-    $data_prevista = $_POST['data_prevista'];
     
     if (empty($processo_id)) {
         $_SESSION['erro'] = 'Selecione um processo para associar.';
@@ -79,61 +79,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['associar_processo']))
         exit;
     }
     
-    // Iniciar transação para garantir consistência
-    $conexao->begin_transaction();
+    // VERIFICAÇÃO EXTRA SEGURA - sem transação primeiro
+    $sql_check = "SELECT COUNT(*) as total FROM gestao_processo_empresas WHERE processo_id = ? AND empresa_id = ?";
+    $stmt_check = $conexao->prepare($sql_check);
+    $stmt_check->bind_param("ii", $processo_id, $empresa_id);
+    $stmt_check->execute();
+    $result_check = $stmt_check->get_result()->fetch_assoc();
+    $stmt_check->close();
     
-    try {
-        // Verificar se já está associado (dupla verificação)
-        $sql_check = "SELECT id FROM gestao_processo_empresas WHERE processo_id = ? AND empresa_id = ?";
-        $stmt_check = $conexao->prepare($sql_check);
-        $stmt_check->bind_param("ii", $processo_id, $empresa_id);
-        $stmt_check->execute();
-        $result_check = $stmt_check->get_result();
-        
-        if ($result_check->num_rows > 0) {
-            throw new Exception('Este processo já está associado à empresa.');
-        }
-        $stmt_check->close();
-        
-        // Associar processo à empresa
-        $sql_associar = "INSERT INTO gestao_processo_empresas (processo_id, empresa_id, data_associacao) 
-                         VALUES (?, ?, NOW())";
-        $stmt = $conexao->prepare($sql_associar);
-        $stmt->bind_param("ii", $processo_id, $empresa_id);
-        
-        if (!$stmt->execute()) {
-            // Se for erro de duplicidade, mesmo após a verificação
-            if ($stmt->errno == 1062) { // Código de erro para duplicate entry
-                throw new Exception('Este processo já está associado à empresa.');
-            } else {
-                throw new Exception('Erro ao associar processo: ' . $stmt->error);
-            }
-        }
-        
-        // Obter o ID da associação recém-criada
-        $associacao_id = $stmt->insert_id;
+    if ($result_check['total'] > 0) {
+        $_SESSION['erro'] = 'Este processo já está associado à empresa. Atualize a página.';
+        header("Location: gerenciar-processos.php?empresa_id=" . $empresa_id);
+        exit;
+    }
+    
+    // AGORA fazemos as inserções SEM transação complexa
+    $error = null;
+    
+    // 1. Inserir associação principal
+    $sql_associar = "INSERT INTO gestao_processo_empresas (processo_id, empresa_id, data_associacao) 
+                     VALUES (?, ?, NOW())";
+    $stmt = $conexao->prepare($sql_associar);
+    $stmt->bind_param("ii", $processo_id, $empresa_id);
+    
+    if ($stmt->execute()) {
         $stmt->close();
         
-        // Copiar checklist do processo PRÉ-DEFINIDO para a empresa
-        $sql_checklist = "INSERT INTO gestao_processo_checklist (processo_id, empresa_id, titulo, descricao, created_at, updated_at)
-                        SELECT ?, ?, titulo, descricao, NOW(), NOW()
-                        FROM gestao_processo_predefinido_checklist 
-                        WHERE processo_id = ?";
+        // 2. COPIAR checklist predefinido para a tabela de checklists da empresa
+        $sql_copiar_checklist = "INSERT INTO gestao_processo_checklist 
+                                (processo_id, empresa_id, titulo, descricao, ordem, created_at, updated_at)
+                                SELECT ?, ?, titulo, descricao, ordem, NOW(), NOW()
+                                FROM gestao_processo_predefinido_checklist 
+                                WHERE processo_id = ?";
         
-        $stmt_checklist = $conexao->prepare($sql_checklist);
-        $stmt_checklist->bind_param("iii", $processo_id, $empresa_id, $processo_id);
+        $stmt_copiar = $conexao->prepare($sql_copiar_checklist);
+        $stmt_copiar->bind_param("iii", $processo_id, $empresa_id, $processo_id);
         
-        if (!$stmt_checklist->execute()) {
-            throw new Exception('Erro ao copiar checklist: ' . $stmt_checklist->error);
+        if ($stmt_copiar->execute()) {
+            error_log("Checklist copiado: " . $stmt_copiar->affected_rows . " itens");
+        } else {
+            error_log("Erro ao copiar checklist: " . $stmt_copiar->error);
+            // Não falhar a operação principal se der erro no checklist
         }
-        $stmt_checklist->close();
+        $stmt_copiar->close();
         
-        $conexao->commit();
         $_SESSION['sucesso'] = 'Processo associado à empresa com sucesso!';
         
-    } catch (Exception $e) {
-        $conexao->rollback();
-        $_SESSION['erro'] = $e->getMessage();
+    } else {
+        $error = 'Erro ao associar processo: ' . $stmt->error;
+        $stmt->close();
+    }
+    
+    if ($error) {
+        $_SESSION['erro'] = $error;
     }
     
     header("Location: gerenciar-processos.php?empresa_id=" . $empresa_id);
@@ -174,6 +172,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remover_processo'])) 
         $conexao->rollback();
         $_SESSION['erro'] = 'Erro ao remover processo: ' . $e->getMessage();
     }
+    
+    header("Location: gerenciar-processos.php?empresa_id=" . $empresa_id);
+    exit;
+}
+
+// Processar edição de processo associado
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editar_processo'])) {
+    $associacao_id = intval($_POST['associacao_id']);
+    $data_prevista = $_POST['data_prevista'] ? $_POST['data_prevista'] : null;
+    $observacoes = $_POST['observacoes'] ?? '';
+    
+    // Buscar dados atuais da associação
+    $sql_check = "SELECT * FROM gestao_processo_empresas WHERE id = ? AND empresa_id = ?";
+    $stmt_check = $conexao->prepare($sql_check);
+    $stmt_check->bind_param("ii", $associacao_id, $empresa_id);
+    $stmt_check->execute();
+    $associacao = $stmt_check->get_result()->fetch_assoc();
+    $stmt_check->close();
+    
+    if (!$associacao) {
+        $_SESSION['erro'] = 'Associação não encontrada.';
+        header("Location: gerenciar-processos.php?empresa_id=" . $empresa_id);
+        exit;
+    }
+    
+    // Atualizar dados específicos da empresa para este processo
+    $sql_update = "UPDATE gestao_processo_empresas 
+                   SET data_prevista = ?, observacoes = ?, updated_at = NOW() 
+                   WHERE id = ? AND empresa_id = ?";
+    $stmt = $conexao->prepare($sql_update);
+    $stmt->bind_param("ssii", $data_prevista, $observacoes, $associacao_id, $empresa_id);
+    
+    if ($stmt->execute()) {
+        $_SESSION['sucesso'] = 'Processo atualizado com sucesso!';
+    } else {
+        $_SESSION['erro'] = 'Erro ao atualizar processo: ' . $stmt->error;
+    }
+    $stmt->close();
     
     header("Location: gerenciar-processos.php?empresa_id=" . $empresa_id);
     exit;
@@ -289,6 +325,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remover_processo'])) 
                 <div class="processo-list">
                     <?php foreach ($processos_associados as $processo): ?>
                         <div class="checklist-item">
+                            <?php if ($processo['data_prevista'] || $processo['observacoes']): ?>
+                            <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;">
+                                <?php if ($processo['data_prevista']): ?>
+                                    <div style="font-size: 0.9rem;">
+                                        <strong><i class="fas fa-calendar"></i> Data Prevista:</strong> 
+                                        <?php echo date('d/m/Y', strtotime($processo['data_prevista'])); ?>
+                                    </div>
+                                <?php endif; ?>
+                                
+                                <?php if ($processo['observacoes']): ?>
+                                    <div style="font-size: 0.9rem; margin-top: 0.25rem;">
+                                        <strong><i class="fas fa-sticky-note"></i> Observações:</strong> 
+                                        <?php echo htmlspecialchars($processo['observacoes']); ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
                             <div class="checklist-content">
                                 <div class="checklist-titulo">
                                     <?php echo htmlspecialchars($processo['titulo']); ?>
@@ -318,8 +371,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remover_processo'])) 
                             </div>
                             
                             <div class="actions">
+                                <button type="button" class="action-btn edit-btn" 
+                                        onclick="abrirModalEditar(<?php echo $processo['associacao_id']; ?>, 
+                                                                '<?php echo htmlspecialchars($processo['titulo']); ?>',
+                                                                '<?php echo htmlspecialchars($processo['codigo']); ?>',
+                                                                '<?php echo htmlspecialchars($processo['descricao']); ?>',
+                                                                '<?php echo htmlspecialchars($processo['categoria_nome']); ?>',
+                                                                '<?php echo $processo['prioridade']; ?>',
+                                                                '<?php echo $processo['recorrente']; ?>',
+                                                                '<?php echo $processo['data_prevista'] ?? ''; ?>',
+                                                                '<?php echo htmlspecialchars($processo['observacoes'] ?? ''); ?>')"
+                                        title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                
                                 <form method="POST" action="" style="display: inline;"
-                                      onsubmit="return confirm('Tem certeza que deseja remover este processo da empresa?');">
+                                    onsubmit="return confirm('Tem certeza que deseja remover este processo da empresa?');">
                                     <input type="hidden" name="associacao_id" value="<?php echo $processo['associacao_id']; ?>">
                                     <button type="submit" name="remover_processo" class="action-btn delete-btn" title="Remover">
                                         <i class="fas fa-unlink"></i>
@@ -337,8 +404,166 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remover_processo'])) 
                 </div>
             <?php endif; ?>
         </div>
+
+        <!-- Modal para Editar Processo -->
+        <div id="modalEditarProcesso" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title">Editar Processo para <?php echo htmlspecialchars($empresa['razao_social']); ?></h2>
+                    <button class="close-btn" onclick="fecharModal('modalEditarProcesso')">&times;</button>
+                </div>
+                
+                <form method="POST" action="">
+                    <input type="hidden" id="editar_associacao_id" name="associacao_id">
+                    
+                    <div class="form-section">
+                        <h3><i class="fas fa-info-circle"></i> Informações do Processo (Pré-definido)</h3>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="editar_titulo">Título do Processo</label>
+                                <input type="text" id="editar_titulo" readonly 
+                                       style="background-color: #f8f9fa; cursor: not-allowed;">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="editar_codigo">Código</label>
+                                <input type="text" id="editar_codigo" readonly
+                                       style="background-color: #f8f9fa; cursor: not-allowed;">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editar_descricao">Descrição do Processo</label>
+                            <textarea id="editar_descricao" readonly
+                                      style="background-color: #f8f9fa; cursor: not-allowed;"
+                                      rows="4"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3><i class="fas fa-cog"></i> Configurações (Pré-definidas)</h3>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="editar_categoria">Departamento</label>
+                                <input type="text" id="editar_categoria" readonly
+                                       style="background-color: #f8f9fa; cursor: not-allowed;">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="editar_prioridade">Prioridade</label>
+                                <input type="text" id="editar_prioridade" readonly
+                                       style="background-color: #f8f9fa; cursor: not-allowed;">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editar_recorrente">Tipo de Processo</label>
+                            <input type="text" id="editar_recorrente" readonly
+                                   style="background-color: #f8f9fa; cursor: not-allowed;">
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3><i class="fas fa-building"></i> Personalização para esta Empresa</h3>
+                        
+                        <div class="form-group">
+                            <label for="editar_data_prevista">Data Prevista</label>
+                            <input type="date" id="editar_data_prevista" name="data_prevista"
+                                   min="<?php echo date('Y-m-d'); ?>">
+                            <small style="color: var(--gray);">Data específica para esta empresa</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editar_observacoes">Observações para esta Empresa</label>
+                            <textarea id="editar_observacoes" name="observacoes" 
+                                    placeholder="Observações específicas para <?php echo htmlspecialchars($empresa['razao_social']); ?>..."
+                                    rows="4"></textarea>
+                            <small style="color: var(--gray);">Observações específicas para esta empresa</small>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="fecharModal('modalEditarProcesso')">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="submit" name="editar_processo" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Salvar Personalização
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </main>
 
-    <script src="gestao-scripts.js"></script>
+    <script>
+        // Função para abrir modal de edição
+        function abrirModalEditar(associacaoId, titulo, codigo, descricao, categoria, prioridade, recorrente, dataPrevista, observacoes) {
+            // Preencher os dados no modal
+            document.getElementById('editar_associacao_id').value = associacaoId;
+            
+            // Dados pré-definidos (somente leitura)
+            document.getElementById('editar_titulo').value = titulo;
+            document.getElementById('editar_codigo').value = codigo;
+            document.getElementById('editar_descricao').value = descricao;
+            document.getElementById('editar_categoria').value = categoria;
+            document.getElementById('editar_prioridade').value = prioridade.charAt(0).toUpperCase() + prioridade.slice(1);
+            document.getElementById('editar_recorrente').value = recorrente.charAt(0).toUpperCase() + recorrente.slice(1);
+            
+            // Dados personalizáveis (editáveis)
+            document.getElementById('editar_data_prevista').value = dataPrevista;
+            document.getElementById('editar_observacoes').value = observacoes;
+            
+            // Abrir o modal
+            document.getElementById('modalEditarProcesso').style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+
+        // Função para fechar modal
+        function fecharModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        // Fechar modal ao clicar fora dele
+        window.onclick = function(event) {
+            const modals = document.querySelectorAll('.modal');
+            modals.forEach(modal => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                    document.body.style.overflow = 'auto';
+                }
+            });
+        }
+
+        // Fechar modal com ESC
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                fecharModal('modalEditarProcesso');
+            }
+        });
+
+        // Formatação das informações para exibição
+        function formatarPrioridade(prioridade) {
+            const formatos = {
+                'baixa': '🟢 Baixa',
+                'media': '🟡 Média', 
+                'alta': '🔴 Alta',
+                'urgente': '⚡ Urgente'
+            };
+            return formatos[prioridade] || prioridade;
+        }
+
+        function formatarRecorrente(recorrente) {
+            const formatos = {
+                'unico': '📄 Processo Único',
+                'semanal': '📅 Processo Semanal',
+                'mensal': '🗓️ Processo Mensal',
+                'trimestral': '📊 Processo Trimestral'
+            };
+            return formatos[recorrente] || recorrente;
+        }
+    </script>
 </body>
 </html>
