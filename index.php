@@ -293,6 +293,8 @@
             </div>
         </div>
         
+
+        <h2>Atualização 2.0.1</h2>
         <footer>
             <p>&copy; 2023 Sistema de Gestão de Processos. Todos os direitos reservados.</p>
         </footer>
