@@ -224,3 +224,9 @@ Abaixo descrevo cada tela/arquivo público importante, o que faz, campos princip
 Todo dia que se mecheu no codigo, quando ce tiver pra sair se da git add .
 git commit -m "Descripción del cambio"
 git push origin nombre-del-dev
+
+
+
+
+
+atualizando o sistema gestão
