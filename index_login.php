@@ -48,6 +48,8 @@
                 <p>Não tem uma conta? <a href="cadastro.php">Cadastre-se</a></p>
             </div>
         </form>
+
+        <h2>Atualização 2.0.1</h2>
     </div>
 
     <script>
