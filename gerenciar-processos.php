@@ -103,29 +103,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['associar_processo']))
     $stmt->bind_param("ii", $processo_id, $empresa_id);
     
     if ($stmt->execute()) {
-        $stmt->close();
+    $stmt->close();
+    
+    // COPIAR checklist predefinido de forma mais robusta
+    $sql_copiar_checklist = "INSERT INTO gestao_processo_checklist 
+                            (processo_id, empresa_id, titulo, descricao, ordem, created_at, updated_at)
+                            SELECT ?, ?, titulo, descricao, ordem, NOW(), NOW()
+                            FROM gestao_processo_predefinido_checklist 
+                            WHERE processo_id = ? 
+                            ORDER BY ordem";
+    
+    $stmt_copiar = $conexao->prepare($sql_copiar_checklist);
+    $stmt_copiar->bind_param("iii", $processo_id, $empresa_id, $processo_id);
+    
+    if ($stmt_copiar->execute()) {
+        $itens_copiados = $stmt_copiar->affected_rows;
+        error_log("Checklist copiado com sucesso: $itens_copiados itens");
         
-        // 2. COPIAR checklist predefinido para a tabela de checklists da empresa
-        $sql_copiar_checklist = "INSERT INTO gestao_processo_checklist 
-                                (processo_id, empresa_id, titulo, descricao, ordem, created_at, updated_at)
-                                SELECT ?, ?, titulo, descricao, ordem, NOW(), NOW()
-                                FROM gestao_processo_predefinido_checklist 
-                                WHERE processo_id = ?";
-        
-        $stmt_copiar = $conexao->prepare($sql_copiar_checklist);
-        $stmt_copiar->bind_param("iii", $processo_id, $empresa_id, $processo_id);
-        
-        if ($stmt_copiar->execute()) {
-            error_log("Checklist copiado: " . $stmt_copiar->affected_rows . " itens");
-        } else {
-            error_log("Erro ao copiar checklist: " . $stmt_copiar->error);
-            // Não falhar a operação principal se der erro no checklist
+        // Se não há itens no checklist predefinido, criar um item padrão
+        if ($itens_copiados === 0) {
+            $sql_item_padrao = "INSERT INTO gestao_processo_checklist 
+                               (processo_id, empresa_id, titulo, descricao, ordem, created_at, updated_at)
+                               VALUES (?, ?, 'Item do Checklist', 'Descrição do item', 1, NOW(), NOW())";
+            $stmt_padrao = $conexao->prepare($sql_item_padrao);
+            $stmt_padrao->bind_param("ii", $processo_id, $empresa_id);
+            $stmt_padrao->execute();
+            $stmt_padrao->close();
         }
-        $stmt_copiar->close();
-        
-        $_SESSION['sucesso'] = 'Processo associado à empresa com sucesso!';
-        
     } else {
+        error_log("Erro ao copiar checklist: " . $stmt_copiar->error);
+    }
+    $stmt_copiar->close();
+    
+    $_SESSION['sucesso'] = 'Processo associado à empresa com sucesso!';
+} else {
         $error = 'Erro ao associar processo: ' . $stmt->error;
         $stmt->close();
     }

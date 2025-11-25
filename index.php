@@ -294,7 +294,7 @@
         </div>
         
 
-        <h2>Versão 2.0.1</h2>
+        <h2>Versão 2.0.2</h2>
         <footer>
             <p>&copy; 2023 Sistema de Gestão de Processos. Todos os direitos reservados.</p>
         </footer>

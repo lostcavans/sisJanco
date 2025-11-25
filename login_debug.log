@@ -516,3 +516,5 @@
 [2025-11-21 18:49:40] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
 [2025-11-21 18:49:40] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
 [2025-11-21 18:49:40] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2025-11-24 18:04:08] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-11-24 18:04:09] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
