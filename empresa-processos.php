@@ -311,6 +311,71 @@ $filtro_classes = [
     <title>Processos - <?php echo htmlspecialchars($empresa['razao_social']); ?></title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="gestao-processos/gestao-styles.css">
+    <style>
+        /* ADICIONE ISSO NO SEU gestao-styles.css */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
+    overflow: auto;
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 2% auto;
+    padding: 0;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    animation: modalFadeIn 0.3s;
+}
+
+@keyframes modalFadeIn {
+    from {opacity: 0; transform: translateY(-50px);}
+    to {opacity: 1; transform: translateY(0);}
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #333;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6c757d;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.close-btn:hover {
+    background-color: #e9ecef;
+    color: #495057;
+}
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -852,374 +917,239 @@ $filtro_classes = [
     </div>
 
     <script src="gestao-scripts.js"></script>
-    <script>
-        window.usuarioId = <?php echo $usuario_id; ?>;
-        window.checklistCounter = 0;
+<script>
+// ===== CONFIGURAÇÃO INICIAL =====
+window.usuarioId = <?php echo $usuario_id; ?>;
+window.checklistCounter = 0;
 
-        // Função para abrir modal de gerenciamento de checklist
-        function abrirModalGerenciarChecklist(empresaId, processoId, titulo) {
-            // Preencher dados básicos
-            document.getElementById('gerenciar_empresa_id').value = empresaId;
-            document.getElementById('gerenciar_processo_id').value = processoId;
-            document.getElementById('gerenciar_processo_titulo').textContent = titulo;
-            
-            // Limpar container
-            const container = document.getElementById('checklist-container');
-            container.innerHTML = '';
-            window.checklistCounter = 0;
-            
-            // Carregar checklists existentes via AJAX
-            carregarChecklistsExistente(empresaId, processoId);
-            
-            // Abrir modal
-            document.getElementById('modalGerenciarChecklist').style.display = 'block';
-        }
-
-        // Carregar checklists existentes
-        function carregarChecklistsExistente(empresaId, processoId) {
-            console.log('Buscando checklists para empresa:', empresaId, 'processo:', processoId);
-            
-            // Fazer requisição AJAX para buscar checklists reais
-            fetch(`buscar_checklist_empresa.php?empresa_id=${empresaId}&processo_id=${processoId}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Erro na resposta do servidor: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('Dados recebidos:', data);
-                    
-                    const container = document.getElementById('checklist-container');
-                    container.innerHTML = '';
-                    window.checklistCounter = 0;
-                    
-                    if (data.success && data.checklists && data.checklists.length > 0) {
-                        // Adicionar cada item do checklist real
-                        data.checklists.forEach(item => {
-                            console.log('Adicionando item:', item);
-                            adicionarItemChecklist(item.titulo, item.descricao);
-                        });
-                    } else {
-                        console.log('Nenhum checklist encontrado, adicionando item vazio');
-                        // Se não houver checklists, adicionar um item vazio
-                        adicionarItemChecklist();
-                    }
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar checklists:', error);
-                    // Em caso de erro, adicionar um item vazio
-                    const container = document.getElementById('checklist-container');
-                    container.innerHTML = '';
-                    window.checklistCounter = 0;
-                    adicionarItemChecklist();
-                    alert('Erro ao carregar checklists. Verifique o console para mais detalhes.');
-                });
-        }
-
-        // Adicionar novo item ao checklist - VERSÃO CORRIGIDA
-        function adicionarItemChecklist(titulo = '', descricao = '') {
-            const template = document.getElementById('checklist-item-template');
-            const clone = template.content.cloneNode(true);
-            
-            const container = document.getElementById('checklist-container');
-            const newItem = clone.querySelector('.checklist-template-item');
-            
-            // Preencher dados
-            const tituloInput = newItem.querySelector('input[name="checklist_titulo[]"]');
-            const descricaoTextarea = newItem.querySelector('textarea[name="checklist_descricao[]"]');
-            
-            tituloInput.value = titulo;
-            descricaoTextarea.value = descricao;
-            
-            container.appendChild(newItem);
-            window.checklistCounter++;
-        }
-
-        // Debug do formulário antes do envio
-document.querySelector('form').addEventListener('submit', function(e) {
-    console.log('=== DEBUG FORMULÁRIO ===');
-    const titulos = document.querySelectorAll('input[name="checklist_titulo[]"]');
-    const descricoes = document.querySelectorAll('textarea[name="checklist_descricao[]"]');
+// ===== VERIFICAÇÃO DE CARREGAMENTO =====
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== INICIALIZAÇÃO DE MODAIS ===');
     
-    console.log('Total de itens no formulário:', titulos.length);
-    
-    titulos.forEach((input, index) => {
-        console.log(`Item ${index + 1}:`, {
-            titulo: input.value,
-            descricao: descricoes[index] ? descricoes[index].value : 'N/A'
-        });
+    // Verificar se modais existem
+    const modais = ['modalEditarProcessoEmpresa', 'modalGerenciarChecklist', 'modalEditarChecklist', 'modalImagem'];
+    modais.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            console.log('✓ Modal carregado:', modalId);
+            modal.style.display = 'none';
+        } else {
+            console.error('✗ Modal não encontrado:', modalId);
+        }
     });
+    
+    // Configurar event listeners para fechar modais
+    configurarEventListenersModais();
 });
 
-        // Remover item do checklist
-        function removerItemChecklist(button) {
-            const item = button.closest('.checklist-template-item');
-            const items = document.querySelectorAll('.checklist-template-item');
-            
-            if (items.length > 1) {
-                item.remove();
-                window.checklistCounter--;
-            } else {
-                alert('É necessário ter pelo menos um item no checklist.');
+// ===== FUNÇÕES BÁSICAS DE MODAL =====
+function configurarEventListenersModais() {
+    // Fechar modal clicando fora
+    window.onclick = function(event) {
+        const modais = document.querySelectorAll('.modal');
+        modais.forEach(modal => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+                console.log('Modal fechado clicando fora');
             }
-        }
+        });
+    }
 
-        // Função para abrir modal de edição do processo para a empresa
-        function abrirModalEditarProcessoEmpresa(empresaId, processoId, titulo, dataPrevista, observacoes) {
-            document.getElementById('editar_empresa_id').value = empresaId;
-            document.getElementById('editar_processo_id').value = processoId;
-            document.getElementById('editar_processo_titulo').textContent = titulo;
-            document.getElementById('editar_empresa_data_prevista').value = dataPrevista;
-            document.getElementById('editar_empresa_observacoes').value = observacoes;
-            document.getElementById('modalEditarProcessoEmpresa').style.display = 'block';
-        }
-
-        // Função para abrir modal de edição do checklist COM IMAGEM EXISTENTE
-        function abrirModalEditarChecklist(checklistId, titulo, descricao, observacao, concluido, dataConclusao, empresaId, imagemNome = null) {
-            console.log("Abrindo modal para checklist:", checklistId, "Imagem:", imagemNome);
-            
-            document.getElementById('editar_checklist_id').value = checklistId;
-            document.getElementById('editar_empresa_id_checklist').value = empresaId;
-            document.getElementById('editar_checklist_titulo').value = titulo;
-            document.getElementById('editar_checklist_descricao').value = descricao;
-            document.getElementById('editar_checklist_observacao').value = observacao;
-            document.getElementById('editar_checklist_status').value = concluido;
-            document.getElementById('editar_remover_imagem').value = '0';
-            
-            // 🔽🔽🔽 CONFIGURAR IMAGEM EXISTENTE 🔽🔽🔽
-            if (imagemNome && imagemNome !== '') {
-                console.log("Carregando imagem existente:", imagemNome);
-                document.getElementById('editar_imagem_atual').value = imagemNome;
-                
-                // Criar URL completa para a imagem
-                const urlImagem = 'uploads/checklist-images/' + imagemNome + '?t=' + new Date().getTime();
-                document.getElementById('preview_imagem').src = urlImagem;
-                document.getElementById('preview_imagem_container').style.display = 'block';
-                atualizarInfoImagem(imagemNome); // ← ADICIONAR ESTA LINHA
-
-                // Verificar se a imagem carrega corretamente
-                document.getElementById('preview_imagem').onerror = function() {
-                    console.error("Erro ao carregar imagem:", urlImagem);
-                    document.getElementById('preview_imagem_container').style.display = 'none';
-                    document.getElementById('editar_imagem_atual').value = '';
-                };
-                
-                document.getElementById('preview_imagem').onload = function() {
-                    console.log("Imagem carregada com sucesso:", urlImagem);
-                };
-            } else {
-                console.log("Nenhuma imagem existente");
-                document.getElementById('editar_imagem_atual').value = '';
-                document.getElementById('preview_imagem_container').style.display = 'none';
-            }
-            // 🔼🔼🔼 FIM CONFIGURAÇÃO IMAGEM 🔼🔼🔼
-            
-            // Formatar data para o input datetime-local
-            if (dataConclusao) {
-                const data = new Date(dataConclusao);
-                const formattedDate = data.toISOString().slice(0, 16);
-                document.getElementById('editar_checklist_data_conclusao').value = formattedDate;
-            } else {
-                document.getElementById('editar_checklist_data_conclusao').value = '';
-            }
-            
-            // Preview de nova imagem selecionada
-            const inputImagem = document.getElementById('editar_checklist_imagem');
-            inputImagem.onchange = function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        document.getElementById('preview_imagem').src = e.target.result;
-                        document.getElementById('preview_imagem_container').style.display = 'block';
-                        document.getElementById('editar_remover_imagem').value = '0'; // Não remover se adicionou nova
-                    }
-                    reader.readAsDataURL(file);
-                }
-            };
-            
-            document.getElementById('modalEditarChecklist').style.display = 'block';
-        }
-
-        // Função para remover imagem
-        function removerImagem() {
-            console.log("Removendo imagem do item");
-            document.getElementById('editar_checklist_imagem').value = '';
-            document.getElementById('editar_imagem_atual').value = '';
-            document.getElementById('preview_imagem').src = '';
-            document.getElementById('preview_imagem_container').style.display = 'none';
-            document.getElementById('editar_remover_imagem').value = '1'; // Marcar para remover
-        }
-
-        // Modal para visualizar imagem em tela cheia
-        function abrirModalImagem(imagemNome) {
-            document.getElementById('imagemGrande').src = 'uploads/checklist-images/' + imagemNome;
-            document.getElementById('modalImagem').style.display = 'block';
-        }
-
-        // Função para fechar modal
-        function fecharModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-
-        // Event listeners para modais
-        window.onclick = function(event) {
-            const modals = ['modalGerenciarChecklist', 'modalEditarProcessoEmpresa', 'modalEditarChecklist'];
-            modals.forEach(modalId => {
-                const modal = document.getElementById(modalId);
-                if (event.target === modal) {
+    // Fechar modal com ESC
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            const modais = document.querySelectorAll('.modal');
+            modais.forEach(modal => {
+                if (modal.style.display === 'block') {
                     modal.style.display = 'none';
+                    console.log('Modal fechado com ESC');
                 }
             });
         }
+    });
+}
 
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                fecharModal('modalGerenciarChecklist');
-                fecharModal('modalEditarProcessoEmpresa');
-                fecharModal('modalEditarChecklist');
-            }
-        });
+// Função universal para abrir modais
+function abrirModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'block';
+        console.log('Modal aberto:', modalId);
+    } else {
+        console.error('Modal não encontrado:', modalId);
+    }
+}
 
-        // Função para marcar/desmarcar checklist (exemplo)
-        function marcarChecklist(checklistId, concluido, empresaId) {
-            console.log('Marcando checklist:', checklistId, concluido, empresaId);
-            // Implementar lógica AJAX para atualizar o checklist
-        }
+// Função universal para fechar modais
+function fecharModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        console.log('Modal fechado:', modalId);
+    }
+}
 
+// ===== MODAL: EDITAR PROCESSO EMPRESA =====
+function abrirModalEditarProcessoEmpresa(empresaId, processoId, titulo, dataPrevista, observacoes) {
+    console.log('Abrindo modal editar processo empresa:', {empresaId, processoId});
+    
+    // Preencher dados
+    document.getElementById('editar_empresa_id').value = empresaId;
+    document.getElementById('editar_processo_id').value = processoId;
+    document.getElementById('editar_processo_titulo').textContent = titulo;
+    document.getElementById('editar_empresa_data_prevista').value = dataPrevista;
+    document.getElementById('editar_empresa_observacoes').value = observacoes;
+    
+    // Abrir modal
+    abrirModal('modalEditarProcessoEmpresa');
+}
 
-        // Debug function para verificar dados recebidos
-        function debugChecklists(data) {
-            console.log('=== DEBUG CHECKLISTS ===');
-            console.log('Success:', data.success);
-            console.log('Checklists count:', data.checklists ? data.checklists.length : 0);
-            if (data.checklists) {
-                data.checklists.forEach((item, index) => {
-                    console.log(`Item ${index}:`, item);
-                });
-            }
-            console.log('=== FIM DEBUG ===');
-        }
+// ===== MODAL: GERENCIAR CHECKLIST =====
+function abrirModalGerenciarChecklist(empresaId, processoId, titulo) {
+    console.log('Abrindo modal gerenciar checklist:', {empresaId, processoId});
+    
+    // Preencher dados básicos
+    document.getElementById('gerenciar_empresa_id').value = empresaId;
+    document.getElementById('gerenciar_processo_id').value = processoId;
+    document.getElementById('gerenciar_processo_titulo').textContent = titulo;
+    
+    // Limpar e carregar checklists
+    const container = document.getElementById('checklist-container');
+    container.innerHTML = '';
+    window.checklistCounter = 0;
+    
+    // Carregar checklists existentes
+    carregarChecklistsExistente(empresaId, processoId);
+    
+    // Abrir modal
+    abrirModal('modalGerenciarChecklist');
+}
 
-        // Modifique a função carregarChecklistsExistente para incluir debug
-        function carregarChecklistsExistente(empresaId, processoId) {
-            console.log('Buscando checklists para empresa:', empresaId, 'processo:', processoId);
-            
-            fetch(`buscar_checklist_empresa.php?empresa_id=${empresaId}&processo_id=${processoId}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Erro na resposta do servidor: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    debugChecklists(data); // Adicionar debug aqui
-                    
-                    const container = document.getElementById('checklist-container');
-                    container.innerHTML = '';
-                    window.checklistCounter = 0;
-                    
-                    if (data.success && data.checklists && data.checklists.length > 0) {
-                        data.checklists.forEach(item => {
-                            console.log('Adicionando item:', item);
-                            adicionarItemChecklist(item.titulo, item.descricao);
-                        });
-                    } else {
-                        console.log('Nenhum checklist encontrado, adicionando item vazio');
-                        adicionarItemChecklist();
-                    }
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar checklists:', error);
-                    const container = document.getElementById('checklist-container');
-                    container.innerHTML = '';
-                    window.checklistCounter = 0;
-                    adicionarItemChecklist();
-                });
-        }
+// ===== MODAL: EDITAR CHECKLIST =====
+function abrirModalEditarChecklist(checklistId, titulo, descricao, observacao, concluido, dataConclusao, empresaId, imagemNome = null) {
+    console.log('Abrindo modal editar checklist:', checklistId);
+    
+    // Preencher dados básicos
+    document.getElementById('editar_checklist_id').value = checklistId;
+    document.getElementById('editar_empresa_id_checklist').value = empresaId;
+    document.getElementById('editar_checklist_titulo').value = titulo;
+    document.getElementById('editar_checklist_descricao').value = descricao;
+    document.getElementById('editar_checklist_observacao').value = observacao;
+    document.getElementById('editar_checklist_status').value = concluido;
+    document.getElementById('editar_remover_imagem').value = '0';
+    
+    // Configurar imagem
+    if (imagemNome && imagemNome !== '') {
+        document.getElementById('editar_imagem_atual').value = imagemNome;
+        document.getElementById('preview_imagem').src = 'uploads/checklist-images/' + imagemNome;
+        document.getElementById('preview_imagem_container').style.display = 'block';
+        atualizarInfoImagem(imagemNome);
+    } else {
+        document.getElementById('editar_imagem_atual').value = '';
+        document.getElementById('preview_imagem_container').style.display = 'none';
+    }
+    
+    // Configurar data
+    if (dataConclusao) {
+        const data = new Date(dataConclusao);
+        const formattedDate = data.toISOString().slice(0, 16);
+        document.getElementById('editar_checklist_data_conclusao').value = formattedDate;
+    } else {
+        document.getElementById('editar_checklist_data_conclusao').value = '';
+    }
+    
+    // Abrir modal
+    abrirModal('modalEditarChecklist');
+}
 
+// ===== MODAL: VISUALIZAR IMAGEM =====
+function abrirModalImagem(imagemNome) {
+    console.log('Abrindo modal imagem:', imagemNome);
+    document.getElementById('imagemGrande').src = 'uploads/checklist-images/' + imagemNome;
+    abrirModal('modalImagem');
+}
 
-        // Debug do formulário antes do envio
-        document.querySelector('form').addEventListener('submit', function(e) {
-            console.log('=== DEBUG FINAL DO FORMULÁRIO ===');
-            const titulos = document.querySelectorAll('input[name="checklist_titulo[]"]');
-            const descricoes = document.querySelectorAll('textarea[name="checklist_descricao[]"]');
-            
-            console.log('Total de itens no formulário:', titulos.length);
-            
-            titulos.forEach((input, index) => {
-                console.log(`Item ${index + 1}:`, {
-                    titulo: input.value,
-                    descricao: descricoes[index] ? descricoes[index].value : 'N/A'
-                });
-            });
-            
-            // Não prevenir submit - deixar enviar
-        });
+// ===== FUNÇÕES AUXILIARES =====
+function carregarChecklistsExistente(empresaId, processoId) {
+    console.log('Carregando checklists para:', {empresaId, processoId});
+    
+    // Simular carregamento por enquanto
+    adicionarItemChecklist('Item de exemplo', 'Descrição exemplo');
+}
 
-        // Função para abrir imagem em tela cheia
-        function abrirModalImagem(imagemNome) {
-            document.getElementById('imagemGrande').src = 'uploads/checklist-images/' + imagemNome;
-            document.getElementById('modalImagem').style.display = 'block';
-        }
+function adicionarItemChecklist(titulo = '', descricao = '') {
+    const template = document.getElementById('checklist-item-template');
+    const clone = template.content.cloneNode(true);
+    const container = document.getElementById('checklist-container');
+    
+    const newItem = clone.querySelector('.checklist-template-item');
+    const tituloInput = newItem.querySelector('input[name="checklist_titulo[]"]');
+    const descricaoTextarea = newItem.querySelector('textarea[name="checklist_descricao[]"]');
+    
+    tituloInput.value = titulo;
+    descricaoTextarea.value = descricao;
+    
+    container.appendChild(newItem);
+    window.checklistCounter++;
+}
 
-        // Fechar modal com ESC
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                fecharModal('modalImagem');
-            }
-        });
+function removerItemChecklist(button) {
+    const items = document.querySelectorAll('.checklist-template-item');
+    if (items.length > 1) {
+        button.closest('.checklist-template-item').remove();
+        window.checklistCounter--;
+    } else {
+        alert('É necessário ter pelo menos um item no checklist.');
+    }
+}
 
+function atualizarInfoImagem(nomeImagem) {
+    const infoImagem = document.getElementById('info_imagem');
+    const nomeSpan = document.getElementById('nome_imagem');
+    
+    if (nomeImagem) {
+        nomeSpan.textContent = nomeImagem;
+        infoImagem.style.display = 'block';
+    } else {
+        infoImagem.style.display = 'none';
+    }
+}
 
-        // Função para atualizar informações da imagem
-        function atualizarInfoImagem(nomeImagem) {
-            const infoImagem = document.getElementById('info_imagem');
-            const nomeSpan = document.getElementById('nome_imagem');
-            
-            if (nomeImagem) {
-                nomeSpan.textContent = nomeImagem;
-                infoImagem.style.display = 'block';
-            } else {
-                infoImagem.style.display = 'none';
-            }
-        }
+function removerImagem() {
+    document.getElementById('editar_checklist_imagem').value = '';
+    document.getElementById('editar_imagem_atual').value = '';
+    document.getElementById('preview_imagem').src = '';
+    document.getElementById('preview_imagem_container').style.display = 'none';
+    document.getElementById('editar_remover_imagem').value = '1';
+}
 
+function aplicarFiltro(status) {
+    const url = new URL(window.location.href);
+    if (status === 'todos') {
+        url.searchParams.delete('status');
+    } else {
+        url.searchParams.set('status', status);
+    }
+    window.location.href = url.toString();
+}
 
-        // Função para aplicar filtro
-        function aplicarFiltro(status) {
-            const url = new URL(window.location.href);
-            if (status === 'todos') {
-                url.searchParams.delete('status');
-            } else {
-                url.searchParams.set('status', status);
-            }
-            window.location.href = url.toString();
-        }
+// ===== TESTE RÁPIDO =====
+// Adicione temporariamente para testar
+function testarTodosModais() {
+    console.log('=== TESTANDO TODOS OS MODAIS ===');
+    
+    // Testar modal editar processo
+    abrirModalEditarProcessoEmpresa(1, 1, 'Processo Teste', '2024-12-31', 'Observações teste');
+    
+    // Aguardar e testar próximo modal
+    setTimeout(() => {
+        fecharModal('modalEditarProcessoEmpresa');
+        abrirModalGerenciarChecklist(1, 1, 'Processo Teste');
+    }, 2000);
+}
 
-        function getProcessoStatus($processo_id, $empresa_id) {
-            global $conexao;
-            
-            $sql = "SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as concluidos
-                FROM gestao_processo_checklist 
-                WHERE processo_id = ? AND empresa_id = ?";
-            
-            $stmt = $conexao->prepare($sql);
-            $stmt->bind_param("ii", $processo_id, $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result()->fetch_assoc();
-            $stmt->close();
-            
-            $total = $result['total'] ?? 0;
-            $concluidos = $result['concluidos'] ?? 0;
-            
-            if ($total == 0) return 'pendente';
-            if ($concluidos == $total) return 'concluido';
-            if ($concluidos > 0) return 'em_andamento';
-            return 'pendente';
-        }
-    </script>
+// Descomente a linha abaixo para testar automaticamente
+// document.addEventListener('DOMContentLoaded', testarTodosModais);
+</script>
 </body>
 </html>
