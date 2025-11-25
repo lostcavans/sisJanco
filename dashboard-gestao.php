@@ -33,15 +33,16 @@ if (!temPermissaoGestao('analista')) {
 
 $where_clause = implode(" AND ", $where_conditions);
 
-// Buscar processos para o dashboard - QUERY ATUALIZADA
+// Buscar processos para o dashboard - QUERY COMPATÍVEL COM EMPRESA-PROCESSOS
 $sql = "SELECT p.*, u.nome_completo as responsavel_nome, c.nome as categoria_nome,
-               (SELECT COUNT(*) FROM gestao_processo_empresas pe WHERE pe.processo_id = p.id) as total_empresas,
-               (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) as empresas_concluidas,
-               -- Calcular status real baseado no progresso
+               (SELECT COUNT(DISTINCT empresa_id) FROM gestao_processo_checklist WHERE processo_id = p.id) as total_empresas_checklist,
+               (SELECT COUNT(DISTINCT empresa_id) FROM gestao_processo_checklist WHERE processo_id = p.id AND concluido = 1) as empresas_concluidas_checklist,
+               -- Calcular status real baseado no progresso dos checklists (MESMA LÓGICA DO EMPRESA-PROCESSOS)
                CASE 
-                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 
-                        (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 'concluido'
-                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) > 0 THEN 'em_andamento'
+                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist WHERE processo_id = p.id) = 0 THEN 'pendente'
+                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist WHERE processo_id = p.id AND concluido = 1) = 
+                        (SELECT COUNT(*) FROM gestao_processo_checklist WHERE processo_id = p.id) THEN 'concluido'
+                   WHEN (SELECT COUNT(*) FROM gestao_processo_checklist WHERE processo_id = p.id AND concluido = 1) > 0 THEN 'em_andamento'
                    ELSE 'pendente'
                END as status_real
         FROM gestao_processos p 
@@ -59,34 +60,44 @@ $stmt->execute();
 $processos_dashboard = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// Calcular progresso para cada processo
-foreach ($processos_dashboard as &$processo) {
-    if ($processo['total_empresas'] > 0) {
-        $processo['progresso'] = round(($processo['empresas_concluidas'] / $processo['total_empresas']) * 100);
-    } else {
-        $processo['progresso'] = 0;
-    }
-}
-unset($processo);
-
+// Calcular progresso e status usando funções padronizadas
 foreach ($processos_dashboard as &$processo) {
     $processo['status_real'] = calcularStatusProcesso($processo['id']);
+    $processo['progresso'] = calcularProgressoProcesso($processo['id']);
     
-    if ($processo['total_empresas'] > 0) {
-        $processo['progresso'] = round(($processo['empresas_concluidas'] / $processo['total_empresas']) * 100);
-    } else {
-        $processo['progresso'] = 0;
-    }
+    // Buscar e armazenar estatísticas de checklist para uso no HTML
+    $sql_checklist_stats = "SELECT 
+        COUNT(*) as total_checklists,
+        SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as checklists_concluidos
+        FROM gestao_processo_checklist 
+        WHERE processo_id = ?";
+    
+    $stmt_stats = $conexao->prepare($sql_checklist_stats);
+    $stmt_stats->bind_param("i", $processo['id']);
+    $stmt_stats->execute();
+    $checklist_stats = $stmt_stats->get_result()->fetch_assoc();
+    $stmt_stats->close();
+    
+    $processo['total_checklists'] = $checklist_stats['total_checklists'] ?? 0;
+    $processo['checklists_concluidos'] = $checklist_stats['checklists_concluidos'] ?? 0;
 }
 unset($processo);
 
-// Buscar estatísticas para o dashboard (baseado no progresso real)
+// Calcular progresso e status usando funções padronizadas
+foreach ($processos_dashboard as &$processo) {
+    $processo['status_real'] = calcularStatusProcesso($processo['id']);
+    $processo['progresso'] = calcularProgressoProcesso($processo['id']);
+}
+unset($processo);
+
+// Buscar estatísticas para o dashboard (COMPATÍVEL COM EMPRESA-PROCESSOS)
 if (temPermissaoGestao('analista')) {
     $sql_estatisticas = "SELECT 
         COUNT(*) as total_processos,
         SUM(CASE 
             WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 
-                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 1 
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) AND
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) > 0 THEN 1 
             ELSE 0 
         END) as processos_concluidos,
         SUM(CASE 
@@ -96,7 +107,8 @@ if (temPermissaoGestao('analista')) {
             ELSE 0 
         END) as processos_andamento,
         SUM(CASE 
-            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 0 THEN 1 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) = 0 OR
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 0 THEN 1 
             ELSE 0 
         END) as processos_pendentes
         FROM gestao_processos p WHERE ativo = 1";
@@ -105,7 +117,8 @@ if (temPermissaoGestao('analista')) {
         COUNT(*) as total_processos,
         SUM(CASE 
             WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 
-                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) THEN 1 
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) AND
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) > 0 THEN 1 
             ELSE 0 
         END) as processos_concluidos,
         SUM(CASE 
@@ -115,7 +128,8 @@ if (temPermissaoGestao('analista')) {
             ELSE 0 
         END) as processos_andamento,
         SUM(CASE 
-            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 0 THEN 1 
+            WHEN (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id) = 0 OR
+                 (SELECT COUNT(*) FROM gestao_processo_checklist pc WHERE pc.processo_id = p.id AND pc.concluido = 1) = 0 THEN 1 
             ELSE 0 
         END) as processos_pendentes
         FROM gestao_processos p WHERE ativo = 1 AND responsavel_id = ?";
@@ -372,23 +386,32 @@ $filtro_classes = [
             flex-wrap: wrap;
         }
         
+        /* BARRA DE PROGRESSO - DASHBOARD */
         .process-progress {
             margin: 1rem 0;
         }
-        
+
         .progress-bar-small {
             background: #e9ecef;
             border-radius: 10px;
             height: 8px;
             overflow: hidden;
+            width: 100%;
         }
-        
+
         .progress-fill-small {
             background: linear-gradient(90deg, #10b981, #34d399);
             height: 100%;
             border-radius: 10px;
             transition: width 0.5s ease;
+            min-width: 8px; /* Garante que seja visível mesmo com 0% */
         }
+
+        /* Cores diferentes baseadas no progresso */
+        .progress-fill-small.baixa { background: #10b981; }
+        .progress-fill-small.media { background: #3b82f6; }
+        .progress-fill-small.alta { background: #f59e0b; }
+        .progress-fill-small.completo { background: #10b981; }
         
         .process-actions {
             display: flex;
@@ -634,7 +657,7 @@ $filtro_classes = [
                                     <?php endif; ?>
                                 </div>
                             </div>
-                            <span class="status-badge status-<?php echo $processo['status']; ?>">
+                            <span class="status-badge status-<?php echo $processo['status_real']; ?>">
                                 <?php 
                                 $status_labels = [
                                     'rascunho' => 'Rascunho',
@@ -644,7 +667,7 @@ $filtro_classes = [
                                     'cancelado' => 'Cancelado',
                                     'pausado' => 'Pausado'
                                 ];
-                                echo $status_labels[$processo['status']] ?? $processo['status'];
+                                echo $status_labels[$processo['status_real']] ?? $processo['status_real'];
                                 ?>
                             </span>
                         </div>
@@ -670,7 +693,24 @@ $filtro_classes = [
                             </div>
                         <?php endif; ?>
                         
-                        <?php if ($processo['total_empresas'] > 0): ?>
+                        <?php 
+                        // Buscar estatísticas de checklist para exibir
+                        $sql_checklist_stats = "SELECT 
+                            COUNT(*) as total_checklists,
+                            SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as checklists_concluidos
+                            FROM gestao_processo_checklist 
+                            WHERE processo_id = ?";
+                        $stmt_stats = $conexao->prepare($sql_checklist_stats);
+                        $stmt_stats->bind_param("i", $processo['id']);
+                        $stmt_stats->execute();
+                        $checklist_stats = $stmt_stats->get_result()->fetch_assoc();
+                        $stmt_stats->close();
+
+                        $total_checklists = $checklist_stats['total_checklists'] ?? 0;
+                        $checklists_concluidos = $checklist_stats['checklists_concluidos'] ?? 0;
+                        ?>
+
+                        <?php if ($processo['total_checklists'] > 0): ?>
                         <div class="process-progress">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
                                 <span style="font-size: 0.8rem; color: #6b7280;">Progresso</span>
@@ -679,10 +719,18 @@ $filtro_classes = [
                                 </span>
                             </div>
                             <div class="progress-bar-small">
-                                <div class="progress-fill-small" style="width: <?php echo $processo['progresso']; ?>%;"></div>
+                                <div class="progress-fill-small 
+                                    <?php 
+                                    if ($processo['progresso'] == 100) echo 'completo';
+                                    elseif ($processo['progresso'] >= 70) echo 'alta';
+                                    elseif ($processo['progresso'] >= 30) echo 'media';
+                                    else echo 'baixa';
+                                    ?>"
+                                    style="width: <?php echo $processo['progresso']; ?>%;">
+                                </div>
                             </div>
                             <div style="font-size: 0.7rem; color: #6b7280; text-align: right; margin-top: 0.25rem;">
-                                <?php echo $processo['empresas_concluidas']; ?>/<?php echo $processo['total_empresas']; ?> empresas
+                                <?php echo $processo['checklists_concluidos']; ?>/<?php echo $processo['total_checklists']; ?> checklists
                             </div>
                         </div>
                         <?php endif; ?>
@@ -726,16 +774,29 @@ $filtro_classes = [
     </main>
 
     <script>
+        // Debug das barras de progresso
         document.addEventListener('DOMContentLoaded', function() {
-            // Animar barras de progresso
+            console.log('=== DEBUG BARRAS DE PROGRESSO ===');
             const progressBars = document.querySelectorAll('.progress-fill-small');
-            progressBars.forEach(bar => {
+            
+            progressBars.forEach((bar, index) => {
                 const width = bar.style.width;
-                bar.style.width = '0%';
-                setTimeout(() => {
-                    bar.style.width = width;
-                }, 100);
+                const computedStyle = window.getComputedStyle(bar);
+                const backgroundColor = computedStyle.backgroundColor;
+                
+                console.log(`Barra ${index + 1}:`, {
+                    width: width,
+                    backgroundColor: backgroundColor,
+                    element: bar
+                });
+                
+                // Forçar cor verde se necessário
+                if (width === '100%' && !backgroundColor.includes('rgb(16, 185, 129)')) {
+                    bar.style.background = '#10b981';
+                    console.log(`Corrigindo barra ${index + 1} para verde`);
+                }
             });
+            console.log('=== FIM DEBUG ===');
         });
 
         // Função para aplicar filtro

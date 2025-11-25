@@ -11,7 +11,7 @@ $usuario_id = $_SESSION['usuario_id_gestao'];
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     $_SESSION['erro'] = 'Processo não encontrado.';
-    header("Location: processos-gestao.php");
+    header("Location: dashboard-gestao.php");
     exit;
 }
 
@@ -31,7 +31,7 @@ $stmt->close();
 
 if (!$processo) {
     $_SESSION['erro'] = 'Processo não encontrado.';
-    header("Location: processos-gestao.php");
+    header("Location: dashboard-gestao.php");
     exit;
 }
 
@@ -42,30 +42,54 @@ if (!temPermissaoGestao('analista') && $processo['responsavel_id'] != $usuario_i
     exit;
 }
 
-// Buscar empresas do checklist
-$sql_checklist = "SELECT e.*, pc.concluido, pc.data_conclusao, pc.observacao,
-                         uc.nome_completo as usuario_conclusao_nome
-                  FROM gestao_processo_empresas pe 
-                  LEFT JOIN empresas e ON pe.empresa_id = e.id 
-                  LEFT JOIN gestao_processo_checklist pc ON pc.processo_id = pe.processo_id AND pc.empresa_id = pe.empresa_id
-                  LEFT JOIN gestao_usuarios uc ON pc.usuario_conclusao_id = uc.id
-                  WHERE pe.processo_id = ? 
-                  ORDER BY e.razao_social";
+// Buscar empresas e seus checklists (COMPATÍVEL COM EMPRESA-PROCESSOS)
+$sql_checklist = "SELECT 
+    e.*, 
+    pc.id as checklist_id,
+    pc.concluido, 
+    pc.data_conclusao, 
+    pc.observacao,
+    pc.imagem_nome,
+    uc.nome_completo as usuario_conclusao_nome,
+    -- Calcular progresso por empresa
+    (SELECT COUNT(*) FROM gestao_processo_checklist pc2 WHERE pc2.empresa_id = e.id AND pc2.processo_id = ?) as total_checklists_empresa,
+    (SELECT COUNT(*) FROM gestao_processo_checklist pc2 WHERE pc2.empresa_id = e.id AND pc2.processo_id = ? AND pc2.concluido = 1) as checklists_concluidos_empresa
+FROM gestao_processo_empresas pe 
+LEFT JOIN empresas e ON pe.empresa_id = e.id 
+LEFT JOIN gestao_processo_checklist pc ON pc.processo_id = pe.processo_id AND pc.empresa_id = pe.empresa_id
+LEFT JOIN gestao_usuarios uc ON pc.usuario_conclusao_id = uc.id
+WHERE pe.processo_id = ? 
+GROUP BY e.id
+ORDER BY e.razao_social";
+
 $stmt = $conexao->prepare($sql_checklist);
-$stmt->bind_param("i", $processo_id);
+$stmt->bind_param("iii", $processo_id, $processo_id, $processo_id);
 $stmt->execute();
 $checklist = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// Calcular progresso
-$total_empresas = count($checklist);
-$empresas_concluidas = 0;
-foreach ($checklist as $item) {
-    if ($item['concluido']) {
-        $empresas_concluidas++;
-    }
-}
-$progresso = $total_empresas > 0 ? round(($empresas_concluidas / $total_empresas) * 100) : 0;
+// Calcular progresso geral (COMPATÍVEL COM EMPRESA-PROCESSOS)
+$sql_progresso_geral = "SELECT 
+    COUNT(*) as total_checklists,
+    SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as checklists_concluidos
+    FROM gestao_processo_checklist 
+    WHERE processo_id = ?";
+
+$stmt_progresso = $conexao->prepare($sql_progresso_geral);
+$stmt_progresso->bind_param("i", $processo_id);
+$stmt_progresso->execute();
+$progresso_geral = $stmt_progresso->get_result()->fetch_assoc();
+$stmt_progresso->close();
+
+$total_checklists = $progresso_geral['total_checklists'] ?? 0;
+$checklists_concluidos = $progresso_geral['checklists_concluidos'] ?? 0;
+$progresso = $total_checklists > 0 ? round(($checklists_concluidos / $total_checklists) * 100) : 0;
+
+
+
+// Calcular progresso geral usando função padronizada
+$progresso = calcularProgressoProcesso($processo_id);
+$status_processo = calcularStatusProcesso($processo_id);
 
 // Processar atualização do checklist
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['atualizar_checklist'])) {
@@ -443,7 +467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['atualizar_checklist']
     <main class="container">
         <div class="page-header">
             <h1 class="page-title">Checklist: <?php echo htmlspecialchars($processo['titulo']); ?></h1>
-            <a href="processos-gestao.php" class="btn btn-secondary">
+            <a href="dashboard-gestao.php" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar
             </a>
         </div>
@@ -473,7 +497,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['atualizar_checklist']
                 </div>
             </div>
             <div style="color: #6b7280;">
-                <?php echo $empresas_concluidas; ?> de <?php echo $total_empresas; ?> empresas concluídas
+                <?php echo $checklists_concluidos; ?> de <?php echo $total_checklists; ?> checklists concluídos
             </div>
         </div>
 
@@ -489,46 +513,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['atualizar_checklist']
                 <input type="hidden" name="atualizar_checklist" value="1">
                 
                 <div class="checklist-list">
-                    <?php foreach ($checklist as $item): ?>
-                        <div class="checklist-item <?php echo $item['concluido'] ? 'concluido' : ''; ?>">
+                    <?php foreach ($checklist as $item): 
+                        $progresso_empresa = 0;
+                        if ($item['total_checklists_empresa'] > 0) {
+                            $progresso_empresa = round(($item['checklists_concluidos_empresa'] / $item['total_checklists_empresa']) * 100);
+                        }
+                    ?>
+                        <div class="checklist-item <?php echo $progresso_empresa == 100 ? 'concluido' : ''; ?>">
                             <div class="checklist-checkbox">
                                 <input type="checkbox" 
-                                       name="empresas[<?php echo $item['id']; ?>][concluido]" 
-                                       value="1" 
-                                       id="empresa_<?php echo $item['id']; ?>"
-                                       <?php echo $item['concluido'] ? 'checked' : ''; ?>
-                                       class="empresa-checkbox">
+                                    name="empresas[<?php echo $item['id']; ?>][concluido]" 
+                                    value="1" 
+                                    id="empresa_<?php echo $item['id']; ?>"
+                                    <?php echo $progresso_empresa == 100 ? 'checked' : ''; ?>
+                                    class="empresa-checkbox">
                             </div>
                             <div class="checklist-content">
                                 <div class="empresa-info">
                                     <label for="empresa_<?php echo $item['id']; ?>" style="cursor: pointer; font-weight: 600; font-size: 1.1rem;">
                                         <?php echo htmlspecialchars($item['razao_social']); ?>
                                     </label>
-                                    <div style="display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap;">
+                                    <div style="display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; align-items: center;">
                                         <span class="empresa-badge">CNPJ: <?php echo htmlspecialchars($item['cnpj']); ?></span>
                                         <span class="empresa-badge"><?php echo htmlspecialchars($item['regime_tributario']); ?></span>
-                                        <span class="empresa-badge"><?php echo htmlspecialchars($item['atividade']); ?></span>
+                                        <span class="empresa-badge">Progresso: <?php echo $progresso_empresa; ?>%</span>
                                     </div>
+                                    
+                                    <!-- Mini barra de progresso para a empresa -->
+                                    <?php if ($item['total_checklists_empresa'] > 0): ?>
+                                    <div style="margin-top: 0.5rem;">
+                                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: #6b7280; margin-bottom: 0.25rem;">
+                                            <span>Checklists: <?php echo $item['checklists_concluidos_empresa']; ?>/<?php echo $item['total_checklists_empresa']; ?></span>
+                                            <span><?php echo $progresso_empresa; ?>%</span>
+                                        </div>
+                                        <div style="background: #e9ecef; border-radius: 10px; height: 6px; overflow: hidden;">
+                                            <div style="background: linear-gradient(90deg, #10b981, #34d399); height: 100%; border-radius: 10px; width: <?php echo $progresso_empresa; ?>%;"></div>
+                                        </div>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                                 
-                                <textarea name="empresas[<?php echo $item['id']; ?>][observacao]" 
-                                          class="observacao-input" 
-                                          placeholder="Observações (opcional)"><?php echo htmlspecialchars($item['observacao'] ?? ''); ?></textarea>
-                                
-                                <?php if ($item['concluido'] && $item['data_conclusao']): ?>
-                                    <div class="conclusao-info">
-                                        <i class="fas fa-check-circle" style="color: #10b981;"></i>
-                                        Concluído por <?php echo htmlspecialchars($item['usuario_conclusao_nome']); ?> 
-                                        em <?php echo date('d/m/Y H:i', strtotime($item['data_conclusao'])); ?>
-                                    </div>
-                                <?php endif; ?>
+                                <!-- Link para ver detalhes do checklist da empresa -->
+                                <div style="margin-top: 0.5rem;">
+                                    <a href="empresa-processos.php?id=<?php echo $item['id']; ?>" class="btn btn-small" style="font-size: 0.8rem; padding: 4px 8px;">
+                                        <i class="fas fa-external-link-alt"></i> Ver Checklist Completo
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
 
                 <div class="form-actions">
-                    <a href="processos-gestao.php" class="btn btn-secondary">Cancelar</a>
+                    <a href="dashboard-gestao.php" class="btn btn-secondary">Cancelar</a>
                     <button type="submit" class="btn btn-success">
                         <i class="fas fa-save"></i> Salvar Checklist
                     </button>

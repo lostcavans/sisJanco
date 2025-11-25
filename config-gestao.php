@@ -121,8 +121,8 @@ function calcularStatusProcesso($processo_id) {
     global $conexao;
     
     $sql = "SELECT 
-        COUNT(*) as total,
-        SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as concluidos
+        COUNT(*) as total_checklists,
+        SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as checklists_concluidos
         FROM gestao_processo_checklist 
         WHERE processo_id = ?";
     
@@ -132,12 +132,34 @@ function calcularStatusProcesso($processo_id) {
     $result = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     
-    $total = $result['total'];
-    $concluidos = $result['concluidos'];
+    $total = $result['total_checklists'] ?? 0;
+    $concluidos = $result['checklists_concluidos'] ?? 0;
     
     if ($total == 0) return 'pendente';
     if ($concluidos == $total) return 'concluido';
     if ($concluidos > 0) return 'em_andamento';
     return 'pendente';
+}
+
+// Função para calcular progresso do processo (COMPATÍVEL ENTRE TODAS AS TELAS)
+function calcularProgressoProcesso($processo_id) {
+    global $conexao;
+    
+    $sql = "SELECT 
+        COUNT(*) as total_checklists,
+        SUM(CASE WHEN concluido = 1 THEN 1 ELSE 0 END) as checklists_concluidos
+        FROM gestao_processo_checklist 
+        WHERE processo_id = ?";
+    
+    $stmt = $conexao->prepare($sql);
+    $stmt->bind_param("i", $processo_id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
+    $total = $result['total_checklists'] ?? 0;
+    $concluidos = $result['checklists_concluidos'] ?? 0;
+    
+    return $total > 0 ? round(($concluidos / $total) * 100) : 0;
 }
 ?>

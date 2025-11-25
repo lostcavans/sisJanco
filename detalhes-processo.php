@@ -13,7 +13,7 @@ $usuario_id = $_SESSION['usuario_id_gestao'];
 // Verificar se o ID do processo foi passado
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     $_SESSION['erro'] = 'Processo não encontrado.';
-    header("Location: processos-gestao.php");
+    header("Location: dashboard-gestao.php");
     exit;
 }
 
@@ -38,7 +38,7 @@ $stmt->close();
 
 if (!$processo) {
     $_SESSION['erro'] = 'Processo não encontrado.';
-    header("Location: processos-gestao.php");
+    header("Location: dashboard-gestao.php");
     exit;
 }
 
@@ -558,7 +558,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reabrir_processo'])) 
     <main class="container">
         <div class="page-header">
             <h1 class="page-title">Detalhes do Processo</h1>
-            <a href="processos-gestao.php" class="btn btn-secondary">
+            <a href="dashboard-gestao.php" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Voltar
             </a>
         </div>
