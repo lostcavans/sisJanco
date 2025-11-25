@@ -409,7 +409,7 @@ try {
     <div class="login-container">
         <div class="logo">
             <div class="logo-icon">
-                <i class="fas fa-project-diagram"></i>
+                <img src="uploads/logo-images/ANTONIO LOGO 2.png" alt="Descrição da imagem" style="width: 150px; height: 100px;">
             </div>
             <h1>Acessar Sistema</h1>
             <p class="subtitle">Sistema de Gestão de Processos</p>

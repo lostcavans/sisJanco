@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['salvar_processo'])) {
 <body>
     <nav class="navbar">
         <a href="dashboard-gestao.php" class="navbar-brand">
-            <i class="fas fa-project-diagram"></i>
+            <img src="uploads/logo-images/ANTONIO LOGO 2.png" alt="Descrição da imagem" style="width: 75px; height: 50px;">
             Gestão de Processos
         </a>
         <ul class="navbar-nav">
