@@ -53,12 +53,7 @@
         .logo {
             font-size: 4rem;
             color: var(--white);
-            margin-bottom: 1rem;
             display: inline-block;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 45%;
-            backdrop-filter: blur(10px);
         }
 
         h1 {
@@ -256,7 +251,7 @@
     <div class="container">
         <div class="header">
             <div class="logo">
-                <i class="fas fa-project-diagram"></i>
+                <img src="uploads/logo-images/ANTONIO LOGO 3.png" alt="Descrição da imagem" style="width: 300px; height: 200px;">
             </div>
             <h1>Sistema de Gestão de Processos</h1>
             <p class="subtitle">Selecione a empresa que deseja acessar para gerenciar seus processos de forma eficiente</p>
@@ -294,8 +289,8 @@
         </div>
         
 
-        <h2>Versão 2.0.5</h2>
         <footer>
+            <p>&copy; Versão 2.0.5</p>
             <p>&copy; 2023 Sistema de Gestão de Processos. Todos os direitos reservados.</p>
         </footer>
     </div>
