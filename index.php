@@ -272,7 +272,7 @@
             
             <div class="company-card outra">
                 <i class="fas fa-industry company-icon"></i>
-                <h3 class="company-name">Outra Empresa</h3>
+                <h3 class="company-name">Gestão Janco</h3>
                 <p class="company-description">Sistema de gestão empresarial integrado</p>
                 <a href="login-gestao.php" class="btn">Acessar Sistema</a>
             </div>
@@ -294,7 +294,7 @@
         </div>
         
 
-        <h2>Versão 2.0.2</h2>
+        <h2>Versão 2.0.5</h2>
         <footer>
             <p>&copy; 2023 Sistema de Gestão de Processos. Todos os direitos reservados.</p>
         </footer>
