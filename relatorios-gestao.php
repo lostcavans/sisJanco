@@ -19,7 +19,69 @@ if (temPermissaoGestao('analista')) {
     $sql_empresas = "SELECT COUNT(*) as total FROM empresas WHERE ativo = 1";
     $sql_usuarios = "SELECT COUNT(*) as total FROM gestao_usuarios WHERE ativo = 1";
     $sql_documentos = "SELECT COUNT(*) as total FROM gestao_documentacoes_empresa";
-    $sql_nfe = "SELECT COUNT(*) as total FROM nfe WHERE status = 'processada'";
+    
+    // Novas consultas para diferenciar notas
+    $sql_nfe_entrada = "SELECT COUNT(*) as total FROM nfe WHERE status = 'processada' AND tipo_operacao = 'entrada'";
+    $sql_nfe_saida = "SELECT COUNT(*) as total FROM nfe WHERE status = 'processada' AND tipo_operacao = 'saida'";
+    $sql_nfce = "SELECT COUNT(*) as total FROM nfce WHERE status = 'processada'";
+    
+    // Total geral de notas
+    $sql_total_notas = "SELECT 
+        (SELECT COUNT(*) FROM nfe WHERE status = 'processada') +
+        (SELECT COUNT(*) FROM nfce WHERE status = 'processada') as total";
+    
+    // Consulta para gráfico de notas por mês diferenciado
+    $sql_notas_mes = "SELECT 
+        'NFe Entrada' as tipo, 
+        COUNT(*) as total, 
+        competencia_mes, 
+        competencia_ano 
+    FROM nfe 
+    WHERE tipo_operacao = 'entrada' AND status = 'processada'
+    GROUP BY competencia_ano, competencia_mes 
+    UNION ALL
+    SELECT 
+        'NFe Saída' as tipo, 
+        COUNT(*) as total, 
+        competencia_mes, 
+        competencia_ano 
+    FROM nfe 
+    WHERE tipo_operacao = 'saida' AND status = 'processada'
+    GROUP BY competencia_ano, competencia_mes 
+    UNION ALL
+    SELECT 
+        'NFCe' as tipo, 
+        COUNT(*) as total, 
+        competencia_mes, 
+        competencia_ano 
+    FROM nfce 
+    WHERE status = 'processada'
+    GROUP BY competencia_ano, competencia_mes 
+    ORDER BY competencia_ano DESC, competencia_mes DESC 
+    LIMIT 18";
+    
+    // Consulta para valor total das notas
+    $sql_valor_notas = "SELECT 
+        'NFe Entrada' as tipo,
+        SUM(valor_total) as valor_total,
+        COUNT(*) as quantidade
+    FROM nfe 
+    WHERE tipo_operacao = 'entrada' AND status = 'processada'
+    UNION ALL
+    SELECT 
+        'NFe Saída' as tipo,
+        SUM(valor_total) as valor_total,
+        COUNT(*) as quantidade
+    FROM nfe 
+    WHERE tipo_operacao = 'saida' AND status = 'processada'
+    UNION ALL
+    SELECT 
+        'NFCe' as tipo,
+        SUM(valor_total) as valor_total,
+        COUNT(*) as quantidade
+    FROM nfce 
+    WHERE status = 'processada'";
+    
 } else {
     // Auxiliares veem apenas seus processos
     $sql_total_processos = "SELECT COUNT(*) as total FROM gestao_processos WHERE ativo = 1 AND responsavel_id = ?";
@@ -27,7 +89,68 @@ if (temPermissaoGestao('analista')) {
     $sql_empresas = "SELECT COUNT(DISTINCT empresa_id) as total FROM gestao_processos WHERE ativo = 1 AND responsavel_id = ?";
     $sql_usuarios = "SELECT COUNT(*) as total FROM gestao_usuarios WHERE ativo = 1 AND id = ?";
     $sql_documentos = "SELECT COUNT(*) as total FROM gestao_documentacoes_empresa WHERE usuario_recebimento_id = ?";
-    $sql_nfe = "SELECT COUNT(*) as total FROM nfe WHERE usuario_id = ? AND status = 'processada'";
+    
+    // Novas consultas para diferenciar notas (para auxiliares)
+    $sql_nfe_entrada = "SELECT COUNT(*) as total FROM nfe WHERE usuario_id = ? AND status = 'processada' AND tipo_operacao = 'entrada'";
+    $sql_nfe_saida = "SELECT COUNT(*) as total FROM nfe WHERE usuario_id = ? AND status = 'processada' AND tipo_operacao = 'saida'";
+    $sql_nfce = "SELECT COUNT(*) as total FROM nfce WHERE usuario_id = ? AND status = 'processada'";
+    
+    // Total geral de notas (para auxiliares)
+    $sql_total_notas = "SELECT 
+        (SELECT COUNT(*) FROM nfe WHERE usuario_id = ? AND status = 'processada') +
+        (SELECT COUNT(*) FROM nfce WHERE usuario_id = ? AND status = 'processada') as total";
+    
+    // Consulta para gráfico de notas por mês diferenciado (para auxiliares)
+    $sql_notas_mes = "SELECT 
+        'NFe Entrada' as tipo, 
+        COUNT(*) as total, 
+        competencia_mes, 
+        competencia_ano 
+    FROM nfe 
+    WHERE usuario_id = ? AND tipo_operacao = 'entrada' AND status = 'processada'
+    GROUP BY competencia_ano, competencia_mes 
+    UNION ALL
+    SELECT 
+        'NFe Saída' as tipo, 
+        COUNT(*) as total, 
+        competencia_mes, 
+        competencia_ano 
+    FROM nfe 
+    WHERE usuario_id = ? AND tipo_operacao = 'saida' AND status = 'processada'
+    GROUP BY competencia_ano, competencia_mes 
+    UNION ALL
+    SELECT 
+        'NFCe' as tipo, 
+        COUNT(*) as total, 
+        competencia_mes, 
+        competencia_ano 
+    FROM nfce 
+    WHERE usuario_id = ? AND status = 'processada'
+    GROUP BY competencia_ano, competencia_mes 
+    ORDER BY competencia_ano DESC, competencia_mes DESC 
+    LIMIT 18";
+    
+    // Consulta para valor total das notas (para auxiliares)
+    $sql_valor_notas = "SELECT 
+        'NFe Entrada' as tipo,
+        SUM(valor_total) as valor_total,
+        COUNT(*) as quantidade
+    FROM nfe 
+    WHERE usuario_id = ? AND tipo_operacao = 'entrada' AND status = 'processada'
+    UNION ALL
+    SELECT 
+        'NFe Saída' as tipo,
+        SUM(valor_total) as valor_total,
+        COUNT(*) as quantidade
+    FROM nfe 
+    WHERE usuario_id = ? AND tipo_operacao = 'saida' AND status = 'processada'
+    UNION ALL
+    SELECT 
+        'NFCe' as tipo,
+        SUM(valor_total) as valor_total,
+        COUNT(*) as quantidade
+    FROM nfce 
+    WHERE usuario_id = ? AND status = 'processada'";
 }
 
 // Executar consultas
@@ -36,7 +159,21 @@ $processos_status = executarConsultaArray($sql_processos_status, $usuario_id);
 $total_empresas = executarConsulta($sql_empresas, $usuario_id);
 $total_usuarios = executarConsulta($sql_usuarios, $usuario_id);
 $total_documentos = executarConsulta($sql_documentos, $usuario_id);
-$total_nfe = executarConsulta($sql_nfe, $usuario_id);
+
+// Executar novas consultas de notas
+$total_nfe_entrada = executarConsulta($sql_nfe_entrada, $usuario_id);
+$total_nfe_saida = executarConsulta($sql_nfe_saida, $usuario_id);
+$total_nfce = executarConsulta($sql_nfce, $usuario_id);
+$total_notas = executarConsulta($sql_total_notas, $usuario_id);
+
+// Executar consulta de notas por mês
+if (temPermissaoGestao('analista')) {
+    $notas_por_mes = executarConsultaArray($sql_notas_mes);
+    $valor_notas = executarConsultaArray($sql_valor_notas);
+} else {
+    $notas_por_mes = executarConsultaArray($sql_notas_mes, $usuario_id);
+    $valor_notas = executarConsultaArray($sql_valor_notas, $usuario_id);
+}
 
 // Buscar processos por categoria
 if (temPermissaoGestao('analista')) {
@@ -121,23 +258,6 @@ if (temPermissaoGestao('analista')) {
 }
 $documentos_status = executarConsultaArray($sql_docs_status, $usuario_id);
 
-// Buscar estatísticas de NFes
-if (temPermissaoGestao('analista')) {
-    $sql_nfe_mes = "SELECT COUNT(*) as total, competencia_mes, competencia_ano 
-                   FROM nfe 
-                   GROUP BY competencia_ano, competencia_mes 
-                   ORDER BY competencia_ano DESC, competencia_mes DESC 
-                   LIMIT 6";
-} else {
-    $sql_nfe_mes = "SELECT COUNT(*) as total, competencia_mes, competencia_ano 
-                   FROM nfe 
-                   WHERE usuario_id = ? 
-                   GROUP BY competencia_ano, competencia_mes 
-                   ORDER BY competencia_ano DESC, competencia_mes DESC 
-                   LIMIT 6";
-}
-$nfe_por_mes = executarConsultaArray($sql_nfe_mes, $usuario_id);
-
 // Buscar processos próximos do vencimento
 if (temPermissaoGestao('analista')) {
     $sql_vencimentos = "SELECT p.titulo, p.data_prevista, u.nome_completo as responsavel, 
@@ -168,7 +288,19 @@ function executarConsulta($sql, $usuario_id = null) {
     global $conexao;
     $stmt = $conexao->prepare($sql);
     if ($usuario_id && strpos($sql, '?') !== false) {
-        $stmt->bind_param("i", $usuario_id);
+        if (substr_count($sql, '?') > 1) {
+            // Para consultas com múltiplos parâmetros
+            if (temPermissaoGestao('analista')) {
+                $stmt->bind_param("i", $usuario_id);
+            } else {
+                // Para auxiliares, usar o mesmo usuário para todos os parâmetros
+                $param_types = str_repeat('i', substr_count($sql, '?'));
+                $params = array_fill(0, substr_count($sql, '?'), $usuario_id);
+                $stmt->bind_param($param_types, ...$params);
+            }
+        } else {
+            $stmt->bind_param("i", $usuario_id);
+        }
     }
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
@@ -180,7 +312,19 @@ function executarConsultaArray($sql, $usuario_id = null) {
     global $conexao;
     $stmt = $conexao->prepare($sql);
     if ($usuario_id && strpos($sql, '?') !== false) {
-        $stmt->bind_param("i", $usuario_id);
+        if (substr_count($sql, '?') > 1) {
+            // Para consultas com múltiplos parâmetros
+            if (temPermissaoGestao('analista')) {
+                $stmt->bind_param("i", $usuario_id);
+            } else {
+                // Para auxiliares, usar o mesmo usuário para todos os parâmetros
+                $param_types = str_repeat('i', substr_count($sql, '?'));
+                $params = array_fill(0, substr_count($sql, '?'), $usuario_id);
+                $stmt->bind_param($param_types, ...$params);
+            }
+        } else {
+            $stmt->bind_param("i", $usuario_id);
+        }
     }
     $stmt->execute();
     $result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -206,6 +350,26 @@ foreach ($processos_status as $status) {
     ];
 }
 
+// Preparar dados para gráfico de notas
+$dados_notas_tipo = [
+    ['tipo' => 'NFe Entrada', 'total' => $total_nfe_entrada, 'cor' => '#10B981'],
+    ['tipo' => 'NFe Saída', 'total' => $total_nfe_saida, 'cor' => '#3B82F6'],
+    ['tipo' => 'NFCe', 'total' => $total_nfce, 'cor' => '#8B5CF6']
+];
+
+// Preparar dados para gráfico de notas por mês
+$meses_formatados = [];
+$dados_notas_mes = [];
+
+foreach ($notas_por_mes as $item) {
+    $mes_ano = $item['competencia_mes'] . '/' . $item['competencia_ano'];
+    if (!in_array($mes_ano, $meses_formatados)) {
+        $meses_formatados[] = $mes_ano;
+    }
+    
+    $dados_notas_mes[$item['tipo']][$mes_ano] = $item['total'];
+}
+
 // Calcular totais para cards
 $processos_concluidos = 0;
 $processos_andamento = 0;
@@ -222,6 +386,18 @@ foreach ($processos_status as $status) {
         case 'pendente':
             $processos_pendentes = $status['total'];
             break;
+    }
+}
+
+// Preparar dados de valores das notas
+$valores_formatados = [];
+foreach ($valor_notas as $item) {
+    if ($item['valor_total']) {
+        $valores_formatados[] = [
+            'tipo' => $item['tipo'],
+            'valor_total' => number_format($item['valor_total'], 2, ',', '.'),
+            'quantidade' => $item['quantidade']
+        ];
     }
 }
 ?>
@@ -353,7 +529,10 @@ foreach ($processos_status as $status) {
         .stat-card.empresas { border-left-color: #7209b7; }
         .stat-card.usuarios { border-left-color: #2ec4b6; }
         .stat-card.documentos { border-left-color: #ff9f1c; }
-        .stat-card.nfe { border-left-color: #e63946; }
+        .stat-card.nfe-entrada { border-left-color: #10B981; }
+        .stat-card.nfe-saida { border-left-color: #3B82F6; }
+        .stat-card.nfce { border-left-color: #8B5CF6; }
+        .stat-card.total-notas { border-left-color: #E63946; }
         .stat-card.concluidos { border-left-color: #10b981; }
         .stat-card.andamento { border-left-color: #3b82f6; }
         .stat-card.pendentes { border-left-color: #f59e0b; }
@@ -379,7 +558,10 @@ foreach ($processos_status as $status) {
         .stat-card.empresas .stat-icon { color: #7209b7; }
         .stat-card.usuarios .stat-icon { color: #2ec4b6; }
         .stat-card.documentos .stat-icon { color: #ff9f1c; }
-        .stat-card.nfe .stat-icon { color: #e63946; }
+        .stat-card.nfe-entrada .stat-icon { color: #10B981; }
+        .stat-card.nfe-saida .stat-icon { color: #3B82F6; }
+        .stat-card.nfce .stat-icon { color: #8B5CF6; }
+        .stat-card.total-notas .stat-icon { color: #E63946; }
         .stat-card.concluidos .stat-icon { color: #10b981; }
         .stat-card.andamento .stat-icon { color: #3b82f6; }
         .stat-card.pendentes .stat-icon { color: #f59e0b; }
@@ -442,7 +624,7 @@ foreach ($processos_status as $status) {
 
         .info-item {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             padding: 0.75rem 0;
             border-bottom: 1px solid var(--gray-light);
@@ -474,10 +656,17 @@ foreach ($processos_status as $status) {
         .badge-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
         .badge-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
         .badge-info { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        .badge-purple { background: rgba(139, 92, 246, 0.1); color: #8B5CF6; }
 
         .grid-2-col {
             display: grid;
             grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .grid-3-col {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
         }
 
@@ -493,12 +682,67 @@ foreach ($processos_status as $status) {
             opacity: 0.5;
         }
 
+        .notas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .nota-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: var(--transition);
+        }
+
+        .nota-item:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .nota-item h4 {
+            margin-bottom: 0.5rem;
+            color: var(--dark);
+            font-size: 1rem;
+        }
+
+        .nota-item .quantidade {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .nota-item.nfe-entrada .quantidade { color: #10B981; }
+        .nota-item.nfe-saida .quantidade { color: #3B82F6; }
+        .nota-item.nfce .quantidade { color: #8B5CF6; }
+
+        .valor-nota {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .desc-valor {
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+
+        @media (max-width: 1024px) {
+            .grid-3-col {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
         @media (max-width: 768px) {
             .charts-grid {
                 grid-template-columns: 1fr;
             }
             
-            .grid-2-col {
+            .grid-2-col,
+            .grid-3-col {
                 grid-template-columns: 1fr;
             }
             
@@ -585,13 +829,44 @@ foreach ($processos_status as $status) {
                 </div>
             </div>
 
-            <div class="stat-card nfe">
+            <!-- Novos cards para notas diferenciadas -->
+            <div class="stat-card nfe-entrada">
                 <div class="stat-info">
-                    <h3>NFes Processadas</h3>
-                    <div class="number"><?php echo $total_nfe; ?></div>
+                    <h3>NFes Entrada</h3>
+                    <div class="number"><?php echo $total_nfe_entrada; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-sign-in-alt"></i>
+                </div>
+            </div>
+
+            <div class="stat-card nfe-saida">
+                <div class="stat-info">
+                    <h3>NFes Saída</h3>
+                    <div class="number"><?php echo $total_nfe_saida; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+            </div>
+
+            <div class="stat-card nfce">
+                <div class="stat-info">
+                    <h3>NFCes</h3>
+                    <div class="number"><?php echo $total_nfce; ?></div>
                 </div>
                 <div class="stat-icon">
                     <i class="fas fa-receipt"></i>
+                </div>
+            </div>
+
+            <div class="stat-card total-notas">
+                <div class="stat-info">
+                    <h3>Total de Notas</h3>
+                    <div class="number"><?php echo $total_notas; ?></div>
+                </div>
+                <div class="stat-icon">
+                    <i class="fas fa-file-invoice"></i>
                 </div>
             </div>
 
@@ -651,7 +926,55 @@ foreach ($processos_status as $status) {
             </div>
         </div>
 
+        <!-- Novo gráfico para notas diferenciadas -->
         <div class="grid-2-col">
+            <!-- Gráfico de Notas por Tipo -->
+            <div class="chart-card">
+                <h3 class="chart-title">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Distribuição de Notas
+                </h3>
+                <div class="chart-container">
+                    <canvas id="notasChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Gráfico de Notas por Mês -->
+            <div class="chart-card">
+                <h3 class="chart-title">
+                    <i class="fas fa-chart-line"></i>
+                    Notas por Mês
+                </h3>
+                <div class="chart-container">
+                    <canvas id="notasMesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Valores das Notas -->
+        <?php if (!empty($valores_formatados)): ?>
+        <div class="info-card">
+            <div class="info-header">
+                <h3 class="info-title">
+                    <i class="fas fa-money-bill-wave"></i>
+                    Valor Total das Notas
+                </h3>
+            </div>
+            <div class="info-body">
+                <div class="notas-grid">
+                    <?php foreach ($valores_formatados as $valor): ?>
+                        <div class="nota-item <?php echo strtolower(str_replace(' ', '-', $valor['tipo'])); ?>">
+                            <h4><?php echo $valor['tipo']; ?></h4>
+                            <div class="valor-nota">R$ <?php echo $valor['valor_total']; ?></div>
+                            <div class="desc-valor"><?php echo $valor['quantidade']; ?> notas</div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <div class="grid-3-col">
             <!-- Top Responsáveis -->
             <div class="info-card">
                 <div class="info-header">
@@ -709,58 +1032,32 @@ foreach ($processos_status as $status) {
                     <?php endif; ?>
                 </div>
             </div>
-        </div>
 
-        <div class="grid-2-col">
-            <!-- Processos por Prioridade -->
+            <!-- Distribuição de Notas -->
             <div class="info-card">
                 <div class="info-header">
                     <h3 class="info-title">
-                        <i class="fas fa-flag"></i>
-                        Processos por Prioridade
+                        <i class="fas fa-chart-pie"></i>
+                        Distribuição de Notas
                     </h3>
                 </div>
                 <div class="info-body">
-                    <?php if (count($prioridades) > 0): ?>
-                        <?php foreach ($prioridades as $prioridade): ?>
+                    <?php if (count($dados_notas_tipo) > 0): ?>
+                        <?php foreach ($dados_notas_tipo as $nota): ?>
+                            <?php if ($nota['total'] > 0): ?>
                             <div class="info-item">
-                                <span class="info-label" style="text-transform: capitalize;">
-                                    <?php echo htmlspecialchars($prioridade['prioridade']); ?>
+                                <span class="info-label">
+                                    <span style="display: inline-block; width: 12px; height: 12px; background: <?php echo $nota['cor']; ?>; border-radius: 50%; margin-right: 8px;"></span>
+                                    <?php echo $nota['tipo']; ?>
                                 </span>
-                                <span class="info-value"><?php echo $prioridade['total']; ?></span>
+                                <span class="info-value"><?php echo $nota['total']; ?></span>
                             </div>
+                            <?php endif; ?>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <div class="empty-state">
-                            <i class="fas fa-flag"></i>
-                            <p>Nenhum processo encontrado</p>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- Processos Recorrentes -->
-            <div class="info-card">
-                <div class="info-header">
-                    <h3 class="info-title">
-                        <i class="fas fa-sync-alt"></i>
-                        Processos Recorrentes
-                    </h3>
-                </div>
-                <div class="info-body">
-                    <?php if (count($recorrentes) > 0): ?>
-                        <?php foreach ($recorrentes as $recorrente): ?>
-                            <div class="info-item">
-                                <span class="info-label" style="text-transform: capitalize;">
-                                    <?php echo htmlspecialchars($recorrente['recorrente']); ?>
-                                </span>
-                                <span class="info-value"><?php echo $recorrente['total']; ?></span>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <div class="empty-state">
-                            <i class="fas fa-sync-alt"></i>
-                            <p>Nenhum processo recorrente</p>
+                            <i class="fas fa-file-invoice"></i>
+                            <p>Nenhuma nota encontrada</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -805,7 +1102,9 @@ foreach ($processos_status as $status) {
             // Dados dos gráficos
             const statusData = <?php echo json_encode($dados_status); ?>;
             const categoriasData = <?php echo json_encode($categorias); ?>;
-            const prioridadesData = <?php echo json_encode($prioridades); ?>;
+            const notasData = <?php echo json_encode($dados_notas_tipo); ?>;
+            const notasMesData = <?php echo json_encode($dados_notas_mes); ?>;
+            const meses = <?php echo json_encode($meses_formatados); ?>;
 
             // Gráfico de Status
             const statusCtx = document.getElementById('statusChart').getContext('2d');
@@ -860,6 +1159,92 @@ foreach ($processos_status as $status) {
                             beginAtZero: true,
                             ticks: {
                                 stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Gráfico de Notas por Tipo
+            const notasCtx = document.getElementById('notasChart').getContext('2d');
+            const notasChart = new Chart(notasCtx, {
+                type: 'pie',
+                data: {
+                    labels: notasData.filter(item => item.total > 0).map(item => item.tipo),
+                    datasets: [{
+                        data: notasData.filter(item => item.total > 0).map(item => item.total),
+                        backgroundColor: notasData.filter(item => item.total > 0).map(item => item.cor),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Gráfico de Notas por Mês
+            const notasMesCtx = document.getElementById('notasMesChart').getContext('2d');
+            
+            // Preparar datasets
+            const tiposNotas = Object.keys(notasMesData);
+            const datasets = tiposNotas.map(tipo => {
+                const cores = {
+                    'NFe Entrada': '#10B981',
+                    'NFe Saída': '#3B82F6',
+                    'NFCe': '#8B5CF6'
+                };
+                
+                return {
+                    label: tipo,
+                    data: meses.map(mes => notasMesData[tipo]?.[mes] || 0),
+                    backgroundColor: cores[tipo] || '#6B7280',
+                    borderColor: cores[tipo] || '#6B7280',
+                    borderWidth: 2,
+                    fill: false
+                };
+            });
+
+            const notasMesChart = new Chart(notasMesCtx, {
+                type: 'line',
+                data: {
+                    labels: meses,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index',
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Quantidade de Notas'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Mês/Ano'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y} notas`;
+                                }
                             }
                         }
                     }
