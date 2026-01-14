@@ -564,3 +564,81 @@
 [2025-12-10 19:28:54] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
 [2025-12-10 19:28:54] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
 [2025-12-10 19:28:54] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2025-12-11 18:07:05] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 18:07:05] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 18:07:16] Tentativa de login | Data: {"username":"admin","empresa_id":"22","password_length":8}
+[2025-12-11 18:07:16] SQL preparado | Data: SELECT u.*, e.razao_social, e.cnpj, e.regime_tributario 
+                    FROM gestao_usuarios u 
+                    INNER JOIN gestao_user_empresa ue ON u.id = ue.user_id 
+                    INNER JOIN gestao_empresas e ON ue.empresa_id = e.id 
+                    WHERE u.username = ? AND u.ativo = 1 AND e.id = ?
+[2025-12-11 18:07:16] Resultado da consulta | Data: {"num_rows":1,"error":""}
+[2025-12-11 18:07:16] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
+[2025-12-11 18:07:16] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
+[2025-12-11 18:07:16] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2025-12-11 20:51:14] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 20:51:14] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 20:51:24] Tentativa de login | Data: {"username":"admin","empresa_id":"22","password_length":8}
+[2025-12-11 20:51:24] SQL preparado | Data: SELECT u.*, e.razao_social, e.cnpj, e.regime_tributario 
+                    FROM gestao_usuarios u 
+                    INNER JOIN gestao_user_empresa ue ON u.id = ue.user_id 
+                    INNER JOIN gestao_empresas e ON ue.empresa_id = e.id 
+                    WHERE u.username = ? AND u.ativo = 1 AND e.id = ?
+[2025-12-11 20:51:24] Resultado da consulta | Data: {"num_rows":1,"error":""}
+[2025-12-11 20:51:24] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
+[2025-12-11 20:51:24] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
+[2025-12-11 20:51:24] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2025-12-11 20:51:34] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 20:51:34] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 20:51:36] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 20:51:36] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 20:51:44] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 20:51:44] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 20:57:31] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 20:57:31] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 20:57:37] Tentativa de login | Data: {"username":"admin","empresa_id":"22","password_length":8}
+[2025-12-11 20:57:37] SQL preparado | Data: SELECT u.*, e.razao_social, e.cnpj, e.regime_tributario 
+                    FROM gestao_usuarios u 
+                    INNER JOIN gestao_user_empresa ue ON u.id = ue.user_id 
+                    INNER JOIN gestao_empresas e ON ue.empresa_id = e.id 
+                    WHERE u.username = ? AND u.ativo = 1 AND e.id = ?
+[2025-12-11 20:57:37] Resultado da consulta | Data: {"num_rows":1,"error":""}
+[2025-12-11 20:57:37] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
+[2025-12-11 20:57:37] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
+[2025-12-11 20:57:37] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2025-12-11 21:37:22] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-11 21:37:22] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-11 21:37:30] Tentativa de login | Data: {"username":"admin","empresa_id":"22","password_length":8}
+[2025-12-11 21:37:30] SQL preparado | Data: SELECT u.*, e.razao_social, e.cnpj, e.regime_tributario 
+                    FROM gestao_usuarios u 
+                    INNER JOIN gestao_user_empresa ue ON u.id = ue.user_id 
+                    INNER JOIN gestao_empresas e ON ue.empresa_id = e.id 
+                    WHERE u.username = ? AND u.ativo = 1 AND e.id = ?
+[2025-12-11 21:37:30] Resultado da consulta | Data: {"num_rows":1,"error":""}
+[2025-12-11 21:37:30] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
+[2025-12-11 21:37:30] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
+[2025-12-11 21:37:30] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2025-12-12 17:28:40] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2025-12-12 17:28:40] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2025-12-12 17:28:48] Tentativa de login | Data: {"username":"admin","empresa_id":"22","password_length":8}
+[2025-12-12 17:28:48] SQL preparado | Data: SELECT u.*, e.razao_social, e.cnpj, e.regime_tributario 
+                    FROM gestao_usuarios u 
+                    INNER JOIN gestao_user_empresa ue ON u.id = ue.user_id 
+                    INNER JOIN gestao_empresas e ON ue.empresa_id = e.id 
+                    WHERE u.username = ? AND u.ativo = 1 AND e.id = ?
+[2025-12-12 17:28:48] Resultado da consulta | Data: {"num_rows":1,"error":""}
+[2025-12-12 17:28:48] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
+[2025-12-12 17:28:48] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
+[2025-12-12 17:28:48] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}
+[2026-01-14 14:19:07] Busca de empresas | Data: {"num_empresas":3,"error":""}
+[2026-01-14 14:19:07] Verificação de tabelas | Data: {"gestao_usuarios":true,"gestao_empresas":true,"gestao_user_empresa":true}
+[2026-01-14 14:19:21] Tentativa de login | Data: {"username":"admin","empresa_id":"22","password_length":8}
+[2026-01-14 14:19:21] SQL preparado | Data: SELECT u.*, e.razao_social, e.cnpj, e.regime_tributario 
+                    FROM gestao_usuarios u 
+                    INNER JOIN gestao_user_empresa ue ON u.id = ue.user_id 
+                    INNER JOIN gestao_empresas e ON ue.empresa_id = e.id 
+                    WHERE u.username = ? AND u.ativo = 1 AND e.id = ?
+[2026-01-14 14:19:21] Resultado da consulta | Data: {"num_rows":1,"error":""}
+[2026-01-14 14:19:21] Usuário encontrado | Data: {"id":2,"username":"admin","nivel_acesso":"admin","password_hash":"$2y$10$RsWzaTfWeGFFo..."}
+[2026-01-14 14:19:21] Verificação de senha | Data: {"senha_correta":true,"password_provided":"admin123"}
+[2026-01-14 14:19:21] Login bem-sucedido | Data: {"user_id":2,"empresa_id":"22"}

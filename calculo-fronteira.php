@@ -411,8 +411,6 @@ function gerarResultadosCalculos($calculo) {
                 <p class="text-2xl font-bold">R$ ' . number_format($calculo['icms_reducao'], 2, ',', '.') . '</p>
               </div>';
     
-    $html .= '</div>';
-
     // ICMS Redução SN
     $classe_reducao_sn = '';
     $destaque_reducao_sn = '';
@@ -429,7 +427,7 @@ function gerarResultadosCalculos($calculo) {
                 <p class="text-2xl font-bold">R$ ' . number_format($calculo['icms_reducao_sn'], 2, ',', '.') . '</p>
             </div>';
     
-    // Na função gerarResultadosCalculos(), atualize esta parte:
+    // ICMS Redução ST SN
     $classe_reducao_st_sn = '';
     $destaque_reducao_st_sn = '';
     if ($tipo_calculo_selecionado == 'icms_reducao_st_sn' || $tipo_calculo_selecionado == 'todos') {
@@ -444,6 +442,9 @@ function gerarResultadosCalculos($calculo) {
                 <h3 class="font-semibold text-orange-600">ICMS Redução ST SN</h3>
                 <p class="text-2xl font-bold">R$ ' . number_format($calculo['icms_reducao_st_sn'], 2, ',', '.') . '</p>
             </div>';     
+    
+    $html .= '</div>';
+
     // Indicador do cálculo selecionado
     $html .= '<div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                 <p class="text-sm text-yellow-800">
@@ -485,6 +486,9 @@ if ($action === 'visualizar' && isset($_GET['id'])) {
             exit;
         }
         
+        // DEFINIR O TIPO DE CÁLCULO SELECIONADO AQUI
+        $tipo_calculo_selecionado = $calculo['tipo_calculo'] ?? 'icms_st';
+        
         // Buscar produtos associados ao grupo de cálculo
         $produtos_calculo = [];
         if ($calculo['grupo_id']) {
@@ -509,6 +513,15 @@ if ($action === 'visualizar' && isset($_GET['id'])) {
             <title>Resultado do Cálculo - Sistema Contábil Integrado</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+            <style>
+                .opacity-40 {
+                    opacity: 0.4;
+                }
+                .calculo-selecionado {
+                    border: 2px solid #4f46e5;
+                    box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+                }
+            </style>
         </head>
         <body class="bg-gray-50">
             <div class="container mx-auto p-6">
@@ -548,16 +561,6 @@ if ($action === 'visualizar' && isset($_GET['id'])) {
                         </div>
                     </div>
                     
-                                            <style>
-                    .opacity-40 {
-                        opacity: 0.4;
-                    }
-                    .calculo-selecionado {
-                        border: 2px solid #4f46e5;
-                        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
-                    }
-                    </style>
-
                     <div class="bg-gray-50 p-4 rounded-md">
                         <h2 class="text-lg font-semibold mb-3">Resultados dos Cálculos</h2>
                         
@@ -582,9 +585,12 @@ if ($action === 'visualizar' && isset($_GET['id'])) {
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">NCM</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Descrição</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tipo de Unidade</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantidade</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Valor Unitário</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Valor Total</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Valor IPI</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Valor ICMS</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">';
@@ -608,6 +614,7 @@ if ($action === 'visualizar' && isset($_GET['id'])) {
                 </div>
             </div>';
         }
+        
         if ($calculo['nota_numero']) {
             echo '<div class="bg-gray-50 p-4 rounded-md mt-6">
                     <h2 class="text-lg font-semibold mb-3">Informações da Nota Fiscal</h2>
@@ -624,83 +631,155 @@ if ($action === 'visualizar' && isset($_GET['id'])) {
                     </div>
                 </div>';
         }
+        
         // NOVA SEÇÃO: Estrutura dos Cálculos
         echo '<div class="bg-gray-50 p-4 rounded-md mt-6">
                 <h2 class="text-lg font-semibold mb-3">Estrutura dos Cálculos</h2>
                 <div class="space-y-4">';
         
+        // Definir opacidade para uso na estrutura
+        $opacidade_transparente = 'opacity-40';
+        
         // Fórmula do ICMS ST
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        $classe_estrutura_icms_st = '';
+        $destaque_estrutura_icms_st = '';
+        if ($tipo_calculo_selecionado == 'icms_st' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_st') {
+                $destaque_estrutura_icms_st = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_icms_st = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_icms_st . ' ' . $destaque_estrutura_icms_st . '">
                 <h3 class="font-semibold text-indigo-600 mb-2">ICMS ST</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ';
-        
         if ($calculo['regime_fornecedor'] == '3') {
             echo '((Valor Produto + Valor IPI + Valor Frete + Valor Seguro) × (1 + MVA Ajustada) × Alíquota Interna) - Crédito ICMS - GNRE';
         } else {
             echo '((Valor Produto + Valor IPI + Valor Frete + Valor Seguro) × (1 + MVA Original) × Alíquota Interna) - Crédito ICMS - GNRE';
         }
-        
         echo '</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] + $calculo['valor_frete'] + $calculo['valor_seguro']), 2, ',', '.') . ')';
-        
         if ($calculo['regime_fornecedor'] == '3') {
             echo ' × (1 + ' . number_format($calculo['mva_ajustada']/100, 4, ',', '.') . ')';
         } else {
             echo ' × (1 + ' . number_format($calculo['mva_original']/100, 4, ',', '.') . ')';
         }
-        
         echo ' × ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ') - R$ ' . number_format($calculo['valor_icms'], 2, ',', '.') . ' - R$ ' . number_format($calculo['valor_gnre'], 2, ',', '.') . '</p>
               </div>';
         
         // Fórmula do ICMS Tributado Simples (Regular)
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        $classe_estrutura_simples_regular = '';
+        $destaque_estrutura_simples_regular = '';
+        if ($tipo_calculo_selecionado == 'icms_simples' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_simples') {
+                $destaque_estrutura_simples_regular = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_simples_regular = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_simples_regular . ' ' . $destaque_estrutura_simples_regular . '">
                 <h3 class="font-semibold text-blue-600 mb-2">ICMS Tributado Simples (Regular)</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ((Valor Produto + Valor IPI - Crédito ICMS) / (1 - Alíquota Interna)) × Diferencial Alíquota</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] - $calculo['valor_icms']), 2, ',', '.') . ') / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × ' . number_format($calculo['diferencial_aliquota']/100, 4, ',', '.') . '</p>
               </div>';
         
         // Fórmula do ICMS Tributado Simples (Irregular)
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        $classe_estrutura_simples_irregular = '';
+        $destaque_estrutura_simples_irregular = '';
+        if ($tipo_calculo_selecionado == 'icms_simples' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_simples') {
+                $destaque_estrutura_simples_irregular = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_simples_irregular = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_simples_irregular . ' ' . $destaque_estrutura_simples_irregular . '">
                 <h3 class="font-semibold text-blue-600 mb-2">ICMS Tributado Simples (Irregular)</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ((Valor Produto + Valor IPI - Crédito ICMS) / (1 - Alíquota Interna)) × (Alíquota Interna - Alíquota Interestadual)</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] - $calculo['valor_icms']), 2, ',', '.') . ') / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × (' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ' - ' . number_format($calculo['aliquota_interestadual']/100, 4, ',', '.') . ')</p>
               </div>';
         
         // Fórmula do ICMS Tributado Real/Presumido
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        $classe_estrutura_real = '';
+        $destaque_estrutura_real = '';
+        if ($tipo_calculo_selecionado == 'icms_real' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_real') {
+                $destaque_estrutura_real = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_real = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_real . ' ' . $destaque_estrutura_real . '">
                 <h3 class="font-semibold text-green-600 mb-2">ICMS Tributado Real/Presumido</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ((Valor Produto + Valor IPI - Crédito ICMS) / (1 - Alíquota Interna)) × (1 + MVA CNAE) × Alíquota Interna - Crédito ICMS</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] - $calculo['valor_icms']), 2, ',', '.') . ') / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × (1 + ' . number_format($calculo['mva_cnae']/100, 4, ',', '.') . ') × ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ' - R$ ' . number_format($calculo['valor_icms'], 2, ',', '.') . '</p>
               </div>';
         
         // Fórmula do ICMS Uso e Consumo
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        $classe_estrutura_consumo = '';
+        $destaque_estrutura_consumo = '';
+        if ($tipo_calculo_selecionado == 'icms_consumo' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_consumo') {
+                $destaque_estrutura_consumo = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_consumo = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_consumo . ' ' . $destaque_estrutura_consumo . '">
                 <h3 class="font-semibold text-purple-600 mb-2">ICMS Uso e Consumo</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ((Valor Produto + Valor IPI - Crédito ICMS) / (1 - Alíquota Interna)) × (Alíquota Interna - Alíquota Interestadual)</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] - $calculo['valor_icms']), 2, ',', '.') . ') / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × (' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ' - ' . number_format($calculo['aliquota_interestadual']/100, 4, ',', '.') . ')</p>
               </div>';
         
         // Fórmula do ICMS Redução
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        $classe_estrutura_reducao = '';
+        $destaque_estrutura_reducao = '';
+        if ($tipo_calculo_selecionado == 'icms_reducao' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_reducao') {
+                $destaque_estrutura_reducao = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_reducao = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_reducao . ' ' . $destaque_estrutura_reducao . '">
                 <h3 class="font-semibold text-red-600 mb-2">ICMS Redução</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ((Valor Produto + Valor IPI - Crédito ICMS) / (1 - Alíquota Interna)) × (1 + MVA CNAE) × Alíquota Redução - Crédito ICMS</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] - $calculo['valor_icms']), 2, ',', '.') . ') / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × (1 + ' . number_format($calculo['mva_cnae']/100, 4, ',', '.') . ') × ' . number_format($calculo['aliquota_reducao']/100, 4, ',', '.') . ' - R$ ' . number_format($calculo['valor_icms'], 2, ',', '.') . '</p>
               </div>';
 
         // Fórmula do ICMS Redução SN
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
-            <h3 class="font-semibold text-pink-600 mb-2">ICMS Redução SN</h3>
-            <p class="text-sm text-gray-600 mb-2">Fórmula: (Base Redução SN / (1 - Alíquota Interna)) × (Alíquota Redução / Alíquota Interna) × (Alíquota Interna - Alíquota Interestadual)</p>
-            <p class="text-sm">Valores: (R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] + $calculo['valor_frete'] + $calculo['valor_seguro'] - $calculo['valor_icms']), 2, ',', '.') . ' / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × (' . number_format($calculo['aliquota_reducao']/100, 4, ',', '.') . ' / ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ') × (' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ' - ' . number_format($calculo['aliquota_interestadual']/100, 4, ',', '.') . ')</p>
-        </div>';
+        $classe_estrutura_reducao_sn = '';
+        $destaque_estrutura_reducao_sn = '';
+        if ($tipo_calculo_selecionado == 'icms_reducao_sn' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_reducao_sn') {
+                $destaque_estrutura_reducao_sn = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_reducao_sn = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_reducao_sn . ' ' . $destaque_estrutura_reducao_sn . '">
+                <h3 class="font-semibold text-pink-600 mb-2">ICMS Redução SN</h3>
+                <p class="text-sm text-gray-600 mb-2">Fórmula: (Base Redução SN / (1 - Alíquota Interna)) × (Alíquota Redução / Alíquota Interna) × (Alíquota Interna - Alíquota Interestadual)</p>
+                <p class="text-sm">Valores: (R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] + $calculo['valor_frete'] + $calculo['valor_seguro'] - $calculo['valor_icms']), 2, ',', '.') . ' / (1 - ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ')) × (' . number_format($calculo['aliquota_reducao']/100, 4, ',', '.') . ' / ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ') × (' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ' - ' . number_format($calculo['aliquota_interestadual']/100, 4, ',', '.') . ')</p>
+              </div>';
 
-        // Fórmula da Redução ST SN - NOVO
-        echo '<div class="bg-white p-4 rounded-md shadow-sm">
+        // Fórmula da Redução ST SN
+        $classe_estrutura_reducao_st_sn = '';
+        $destaque_estrutura_reducao_st_sn = '';
+        if ($tipo_calculo_selecionado == 'icms_reducao_st_sn' || $tipo_calculo_selecionado == 'todos') {
+            if ($tipo_calculo_selecionado == 'icms_reducao_st_sn') {
+                $destaque_estrutura_reducao_st_sn = 'calculo-selecionado';
+            }
+        } else {
+            $classe_estrutura_reducao_st_sn = $opacidade_transparente;
+        }
+        echo '<div class="bg-white p-4 rounded-md shadow-sm ' . $classe_estrutura_reducao_st_sn . ' ' . $destaque_estrutura_reducao_st_sn . '">
                 <h3 class="font-semibold text-orange-600 mb-2">Redução ST SN</h3>
                 <p class="text-sm text-gray-600 mb-2">Fórmula: ((Valor Produto + Valor IPI + Valor Frete + Valor Seguro) × (1 + MVA Ajustada) × Alíquota Redução × Alíquota Interna) - Crédito ICMS - GNRE</p>
                 <p class="text-sm">Valores: ((R$ ' . number_format(($calculo['valor_produto'] + $calculo['valor_ipi'] + $calculo['valor_frete'] + $calculo['valor_seguro']), 2, ',', '.') . ') × (1 + ' . number_format($calculo['mva_ajustada']/100, 4, ',', '.') . ') × ' . number_format($calculo['aliquota_reducao']/100, 4, ',', '.') . ' × ' . number_format($calculo['aliquota_interna']/100, 4, ',', '.') . ') - R$ ' . number_format($calculo['valor_icms'], 2, ',', '.') . ' - R$ ' . number_format($calculo['valor_gnre'], 2, ',', '.') . '</p>
-            </div>';
-        
+              </div>';
+
         echo '</div>
             </div>';
                     
